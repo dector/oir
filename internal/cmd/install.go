@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/dector/oir/internal/alias"
 	"github.com/dector/oir/internal/gh"
 	"github.com/dector/oir/internal/install"
-	"github.com/dector/oir/internal/spec"
 	"github.com/dector/oir/internal/store"
 	"github.com/urfave/cli/v3"
 )
@@ -18,7 +18,7 @@ func newInstallCommand() *cli.Command {
 		Name:      "install",
 		Aliases:   []string{"i"},
 		Usage:     "Install a tool from a GitHub release",
-		ArgsUsage: "gh:<owner>/<repo>",
+		ArgsUsage: "gh:<owner>/<repo> | <alias>",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:    "force",
@@ -48,7 +48,7 @@ func runInstall(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("expected a single tool spec, got %d arguments", len(args))
 	}
 
-	sp, err := spec.Parse(args[0])
+	sp, err := alias.Resolve(args[0])
 	if err != nil {
 		return err
 	}
