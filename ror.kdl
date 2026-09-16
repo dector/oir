@@ -1,0 +1,54 @@
+default task="run" args="+list"
+
+task run {
+  description "Runs the application"
+
+  cmd "go run ./cmd/cli"
+}
+
+task build {
+  description "Compiles the application into out/oir"
+
+  cmd #"go build -trimpath -o out/oir %%flags%% ./cmd/cli"# {
+    where flags=#"-ldflags="-s -w -X '%%version-pkg%%.Version=%%version%%' -X '%%version-pkg%%.Commit=%%commit%%' -X '%%version-pkg%%.Date=%%date%%'""# {
+      where version-pkg="github.com/dector/oir/internal/version"
+
+      where version="git describe --tags --always --long --dirty" { execute }
+      where commit="git rev-parse --short HEAD" { execute }
+      where date="date -u +%Y-%m-%dT%H:%M:%SZ" { execute }
+    }
+  }
+}
+
+task install {
+  description "Installs the binary into ~/.local/bin"
+  depends {
+    on "build"
+  }
+
+  cmd "install -m 755 ./out/oir ~/.local/bin/oir"
+}
+
+task test {
+  description "Runs the test suite"
+
+  cmd "go test ./..."
+}
+
+task vet {
+  description "Runs go vet"
+
+  cmd "go vet ./..."
+}
+
+task fmt {
+  description "Formats the source code"
+
+  cmd "gofmt -w ."
+}
+
+task clean {
+  description "Removes build artifacts"
+
+  cmd "rm -rf out"
+}
