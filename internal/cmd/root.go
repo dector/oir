@@ -22,6 +22,7 @@ func New() *cli.Command {
 		Usage:     "install developer tools from GitHub",
 		UsageText: "oir <command> [arguments]",
 		Commands: []*cli.Command{
+			newInstallCommand(),
 			newVersionCommand(),
 		},
 	}
