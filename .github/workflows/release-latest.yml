@@ -1,0 +1,62 @@
+name: release-latest
+
+on:
+  push:
+    branches:
+      - trunk
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build linux amd64 binary
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          ASSET="oir-linux-amd64-${SHORT_SHA}.tar.gz"
+          COMMIT_TIME="$(git log -1 --format=%cI)"
+
+          echo "ASSET=${ASSET}" >> "$GITHUB_ENV"
+
+          LDFLAGS="-s -w \
+            -X 'github.com/dector/oir/internal/version.Version=latest' \
+            -X 'github.com/dector/oir/internal/version.Commit=${GITHUB_SHA}' \
+            -X 'github.com/dector/oir/internal/version.Date=${COMMIT_TIME}'"
+
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags "$LDFLAGS" -o ./oir ./cmd/cli
+
+          # Reproducible archive: fixed mtime, owner/group and entry order.
+          # The same commit then always yields the same bytes (and checksum).
+          tar --sort=name \
+              --mtime='@0' \
+              --owner=0 --group=0 --numeric-owner \
+              -cf - oir | gzip -n > "${ASSET}"
+
+      - name: Replace latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Drop the previous release together with its tag and old artifacts.
+          if gh release view latest >/dev/null 2>&1; then
+            gh release delete latest --cleanup-tag --yes
+          fi
+
+          gh release create latest "${ASSET}" \
+            --title "latest" \
+            --notes "Automated build from ${GITHUB_SHA}" \
+            --latest
