@@ -4,7 +4,6 @@ package store
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,27 +16,42 @@ type Store struct {
 	Root string
 }
 
-// Default returns the store rooted at $OIR_DATA_DIR,
-// $XDG_DATA_HOME/oir or ~/.local/share/oir.
+// Default returns the store rooted at the default directory.
 func Default() (*Store, error) {
-	if dir := os.Getenv("OIR_DATA_DIR"); dir != "" {
-		return &Store{Root: dir}, nil
-	}
-	if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
-		return &Store{Root: filepath.Join(dir, "oir")}, nil
-	}
-
-	home, err := os.UserHomeDir()
+	root, err := DefaultDir()
 	if err != nil {
 		return nil, err
 	}
 
-	return &Store{Root: filepath.Join(home, ".local", "share", "oir")}, nil
+	return &Store{Root: root}, nil
+}
+
+// DefaultDir returns the default store root: $OIR_DATA_DIR,
+// $XDG_DATA_HOME/oir or ~/.local/share/oir.
+func DefaultDir() (string, error) {
+	if dir := os.Getenv("OIR_DATA_DIR"); dir != "" {
+		return dir, nil
+	}
+	if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
+		return filepath.Join(dir, "oir"), nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(home, ".local", "share", "oir"), nil
 }
 
 // Dir returns the install directory for a tool key and version.
 func (s *Store) Dir(key, version string) string {
-	return filepath.Join(s.Root, "installs", key, SanitizeVersion(version))
+	return filepath.Join(s.toolDir(key), SanitizeVersion(version))
+}
+
+// toolDir is the directory holding every version of a tool.
+func (s *Store) toolDir(key string) string {
+	return filepath.Join(s.Root, "installs", key)
 }
 
 // BinaryPath returns the expected path of an installed binary.
@@ -152,50 +166,48 @@ func (s *Store) Owns(path string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// Place copies the binary at src into the store at installs/<key>/<version>/<name>.
+// Staging creates a temporary directory next to a tool's version directories.
 //
-// The swap is atomic: the new binary is staged in a sibling temp directory and
-// renamed into place, so an interrupted install never leaves a partial binary.
-// The returned path is the final binary location.
-func (s *Store) Place(key, version, src, name string) (string, error) {
+// It lives on the same filesystem as the final install, so Adopt can rename it
+// into place atomically. The caller is expected to remove it when not adopted.
+func (s *Store) Staging(key string) (string, error) {
+	parent := s.toolDir(key)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return "", err
+	}
+
+	return os.MkdirTemp(parent, ".staging-*")
+}
+
+// Adopt atomically moves a staged install into its final version directory,
+// replacing any previous version. On failure the previous version is restored.
+func (s *Store) Adopt(key, version, stagedDir string) error {
 	finalDir := s.Dir(key, version)
 	if err := os.MkdirAll(filepath.Dir(finalDir), 0o755); err != nil {
-		return "", err
+		return err
 	}
 
-	tmpDir, err := os.MkdirTemp(filepath.Dir(finalDir), ".staging-")
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		if tmpDir != "" {
-			os.RemoveAll(tmpDir)
-		}
-	}()
-
-	staged := filepath.Join(tmpDir, name)
-	if err := copyFile(src, staged, 0o755); err != nil {
-		return "", err
-	}
-
-	// Move any existing install aside, then swap the staged copy in.
+	trash := ""
 	if _, err := os.Lstat(finalDir); err == nil {
-		trash := finalDir + ".old"
+		trash = finalDir + ".old"
 		_ = os.RemoveAll(trash)
 		if err := os.Rename(finalDir, trash); err != nil {
-			return "", err
+			return err
 		}
-		defer os.RemoveAll(trash)
 	}
 
-	if err := os.Rename(tmpDir, finalDir); err != nil {
-		return "", err
-	}
-	// The staging dir has been renamed away; stop the deferred cleanup from
-	// trying to remove the live install.
-	tmpDir = ""
+	if err := os.Rename(stagedDir, finalDir); err != nil {
+		if trash != "" {
+			_ = os.Rename(trash, finalDir) // best-effort restore
+		}
 
-	return filepath.Join(finalDir, name), nil
+		return err
+	}
+	if trash != "" {
+		_ = os.RemoveAll(trash)
+	}
+
+	return nil
 }
 
 // Remove deletes an installed version.
@@ -214,29 +226,6 @@ func SanitizeVersion(v string) string {
 	v = replacer.Replace(v)
 
 	return strings.Trim(v, ".")
-}
-
-func copyFile(src, dst string, perm os.FileMode) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, perm)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-	if err := out.Close(); err != nil {
-		return err
-	}
-
-	return os.Chmod(dst, perm)
 }
 
 // ErrNotOwned is returned when a path is outside the store.

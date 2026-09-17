@@ -1,22 +1,10 @@
-package gh
+package registry
 
 import (
 	"fmt"
-	"runtime"
 	"sort"
 	"strings"
 )
-
-// Platform is the target os/arch pair used to match release assets.
-type Platform struct {
-	OS   string // runtime.GOOS values: linux, darwin, windows, ...
-	Arch string // runtime.GOARCH values: amd64, arm64, ...
-}
-
-// CurrentPlatform reports the platform oir is running on.
-func CurrentPlatform() Platform {
-	return Platform{OS: runtime.GOOS, Arch: runtime.GOARCH}
-}
 
 // osAliases maps a GOOS value to tokens commonly found in asset names.
 var osAliases = map[string][]string{
@@ -56,8 +44,8 @@ var excludedSuffixes = []string{
 // variantTokens are tolerated but deprioritised, so a plain build wins.
 var variantTokens = []string{"musl", "static", "gnu", "gnueabihf", "glibc", "debug", "nocgo"}
 
-// PickAsset chooses the best release asset for the given repo and platform.
-func PickAsset(assets []Asset, repo string, p Platform) (Asset, error) {
+// Pick chooses the best release asset for the given repo and platform.
+func Pick(assets []Asset, repo string, p Platform) (Asset, error) {
 	best, bestAsset := -1, Asset{}
 
 	for _, a := range assets {
@@ -134,6 +122,7 @@ func containsToken(norm, token string) bool {
 	if token == "" {
 		return false
 	}
+
 	return strings.Contains(" "+norm+" ", " "+token+" ")
 }
 
@@ -143,6 +132,7 @@ func matchesAlias(norm string, aliases []string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -152,6 +142,7 @@ func hasAnySuffix(name string, suffixes []string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 

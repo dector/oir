@@ -47,69 +47,62 @@ func TestOwns(t *testing.T) {
 	}
 }
 
-func TestPlaceIsAtomicAndReplaces(t *testing.T) {
-	root := t.TempDir()
-	s := &Store{Root: root}
+func TestHasIsFalseForMissing(t *testing.T) {
+	s := &Store{Root: t.TempDir()}
+	if s.Has("github/x/y", "latest") {
+		t.Error("Has() = true for a missing install")
+	}
+}
 
-	src := filepath.Join(t.TempDir(), "src")
-	if err := os.WriteFile(src, []byte("v1"), 0o644); err != nil {
-		t.Fatal(err)
+func TestAdoptIsAtomicAndReplaces(t *testing.T) {
+	key, version := "github/dector/ror", "latest"
+	s := &Store{Root: t.TempDir()}
+
+	stage := func(content string) string {
+		t.Helper()
+		dir, err := s.Staging(key)
+		if err != nil {
+			t.Fatalf("Staging: %v", err)
+		}
+		bin := filepath.Join(dir, "ror")
+		if err := os.WriteFile(bin, []byte(content), 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		return dir
 	}
 
-	got, err := s.Place("github/dector/ror", "latest", src, "ror")
-	if err != nil {
-		t.Fatalf("Place: %v", err)
+	if err := s.Adopt(key, version, stage("v1")); err != nil {
+		t.Fatalf("Adopt: %v", err)
 	}
 
-	body, err := os.ReadFile(got)
+	final := s.BinaryPath(key, version, "ror")
+	body, err := os.ReadFile(final)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(body) != "v1" {
 		t.Fatalf("got %q, want v1", body)
 	}
-	if !s.Has("github/dector/ror", "latest") {
-		t.Fatal("Has() = false after Place")
-	}
-
-	info, err := os.Stat(got)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o755 {
-		t.Errorf("mode = %v, want 0755", info.Mode().Perm())
+	if !s.Has(key, version) {
+		t.Fatal("Has() = false after Adopt")
 	}
 
 	// Replace with a new build, as happens when a "latest" tag is republished.
-	if err := os.WriteFile(src, []byte("v2"), 0o644); err != nil {
-		t.Fatal(err)
+	if err := s.Adopt(key, version, stage("v2")); err != nil {
+		t.Fatalf("Adopt (replace): %v", err)
 	}
-	if _, err := s.Place("github/dector/ror", "latest", src, "ror"); err != nil {
-		t.Fatalf("Place (replace): %v", err)
-	}
-
-	body, err = os.ReadFile(got)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(body) != "v2" {
-		t.Fatalf("got %q, want v2", body)
+	if body, err = os.ReadFile(final); err != nil || string(body) != "v2" {
+		t.Fatalf("got %q, %v, want v2", body, err)
 	}
 
 	// No staging or trash directories may be left behind.
-	entries, err := os.ReadDir(filepath.Dir(filepath.Dir(got)))
+	entries, err := os.ReadDir(s.toolDir(key))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 || entries[0].Name() != "latest" {
+	if len(entries) != 1 || entries[0].Name() != version {
 		t.Fatalf("unexpected leftovers in install dir: %v", entries)
-	}
-}
-
-func TestHasIsFalseForMissing(t *testing.T) {
-	s := &Store{Root: t.TempDir()}
-	if s.Has("github/x/y", "latest") {
-		t.Error("Has() = true for a missing install")
 	}
 }
 

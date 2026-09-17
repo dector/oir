@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dector/oir/internal/gh"
-	"github.com/dector/oir/internal/install"
 	"github.com/dector/oir/internal/spec"
 	"github.com/dector/oir/internal/store"
 	"github.com/urfave/cli/v3"
@@ -55,14 +53,9 @@ func runUpdate(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
-	in := &install.Installer{
-		Client:   gh.NewClient(),
-		Store:    st,
-		BinDir:   cmd.String("bin"),
-		Platform: gh.CurrentPlatform(),
-		NoVerify: cmd.Bool("no-verify"),
-		Stdout:   cmd.Writer,
-		Stderr:   cmd.ErrWriter,
+	in, err := newInstaller(cmd)
+	if err != nil {
+		return err
 	}
 
 	var updated, current int

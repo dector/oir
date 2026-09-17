@@ -20,8 +20,8 @@ import (
 	"testing"
 
 	"github.com/dector/oir/internal/gh"
+	"github.com/dector/oir/internal/registry"
 	"github.com/dector/oir/internal/spec"
-	"github.com/dector/oir/internal/store"
 )
 
 const assetName = "tool-linux-amd64.tar.gz"
@@ -138,14 +138,16 @@ func newInstaller(t *testing.T, f *fakeGitHub, dataDir, binDir string) *Installe
 
 	srv := f.start(t)
 
-	return &Installer{
-		Client:   &gh.Client{BaseURL: srv.URL, HTTP: srv.Client(), UserAgent: "oir-test"},
-		Store:    &store.Store{Root: dataDir},
+	return New(Options{
+		Backends: registry.Backends{
+			string(spec.BackendGitHub): &gh.Client{BaseURL: srv.URL, HTTP: srv.Client(), UserAgent: "oir-test"},
+		},
+		StoreDir: dataDir,
 		BinDir:   binDir,
-		Platform: gh.Platform{OS: "linux", Arch: "amd64"},
+		Platform: registry.Platform{OS: "linux", Arch: "amd64"},
 		Stdout:   io.Discard,
 		Stderr:   io.Discard,
-	}
+	})
 }
 
 func TestRunInstallsAndLinks(t *testing.T) {

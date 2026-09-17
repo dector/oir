@@ -9,6 +9,8 @@ import (
 	"github.com/dector/oir/internal/alias"
 	"github.com/dector/oir/internal/gh"
 	"github.com/dector/oir/internal/install"
+	"github.com/dector/oir/internal/registry"
+	"github.com/dector/oir/internal/spec"
 	"github.com/dector/oir/internal/store"
 	"github.com/urfave/cli/v3"
 )
@@ -53,21 +55,9 @@ func runInstall(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	st, err := store.Default()
+	in, err := newInstaller(cmd)
 	if err != nil {
 		return err
-	}
-
-	binDir := cmd.String("bin")
-	in := &install.Installer{
-		Client:   gh.NewClient(),
-		Store:    st,
-		BinDir:   binDir,
-		Platform: gh.CurrentPlatform(),
-		NoVerify: cmd.Bool("no-verify"),
-		Force:    cmd.Bool("force"),
-		Stdout:   cmd.Writer,
-		Stderr:   cmd.ErrWriter,
 	}
 
 	fmt.Fprintf(cmd.Writer, "resolving %s\n", sp)
@@ -85,6 +75,32 @@ func runInstall(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return nil
+}
+
+func newBackends() registry.Backends {
+	return registry.Backends{
+		string(spec.BackendGitHub): gh.New(),
+	}
+}
+
+// newInstaller builds an installer from the shared command flags. The store
+// root is resolved here and passed as an option; nothing downstream chooses it.
+func newInstaller(cmd *cli.Command) (*install.Installer, error) {
+	storeDir, err := store.DefaultDir()
+	if err != nil {
+		return nil, err
+	}
+
+	return install.New(install.Options{
+		Backends: newBackends(),
+		StoreDir: storeDir,
+		BinDir:   cmd.String("bin"),
+		Platform: registry.CurrentPlatform(),
+		NoVerify: cmd.Bool("no-verify"),
+		Force:    cmd.Bool("force"),
+		Stdout:   cmd.Writer,
+		Stderr:   cmd.ErrWriter,
+	}), nil
 }
 
 func defaultBinDir() string {

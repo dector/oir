@@ -1,4 +1,5 @@
-package install
+// Package progress renders download progress, mostly for terminals.
+package progress
 
 import (
 	"fmt"
@@ -7,9 +8,9 @@ import (
 	"time"
 )
 
-// progressWriter renders download progress to a terminal, and stays quiet
-// (except for a single summary line) when writing to a file or pipe.
-type progressWriter struct {
+// Writer renders progress to a terminal, and stays quiet (except for a single
+// summary line) when writing to a file or pipe.
+type Writer struct {
 	w       io.Writer
 	label   string
 	total   int64
@@ -18,8 +19,13 @@ type progressWriter struct {
 	enabled bool
 }
 
-func newProgress(w io.Writer, label string, total int64) *progressWriter {
-	return &progressWriter{
+// New builds a progress writer. A nil destination discards all output.
+func New(w io.Writer, label string, total int64) *Writer {
+	if w == nil {
+		w = io.Discard
+	}
+
+	return &Writer{
 		w:       w,
 		label:   label,
 		total:   total,
@@ -27,7 +33,8 @@ func newProgress(w io.Writer, label string, total int64) *progressWriter {
 	}
 }
 
-func (p *progressWriter) Write(b []byte) (int, error) {
+// Write records progress. It always reports a full write.
+func (p *Writer) Write(b []byte) (int, error) {
 	p.written += int64(len(b))
 	if p.enabled && time.Since(p.last) > 100*time.Millisecond {
 		p.last = time.Now()
@@ -37,7 +44,7 @@ func (p *progressWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-func (p *progressWriter) render() {
+func (p *Writer) render() {
 	if p.total > 0 {
 		fmt.Fprintf(p.w, "\r\033[K  %s %s / %s (%.0f%%)",
 			p.label, humanBytes(p.written), humanBytes(p.total),
@@ -49,7 +56,7 @@ func (p *progressWriter) render() {
 }
 
 // Done finishes the progress line.
-func (p *progressWriter) Done() {
+func (p *Writer) Done() {
 	if p.enabled {
 		fmt.Fprintf(p.w, "\r\033[K  %s %s\n", p.label, humanBytes(p.written))
 		return

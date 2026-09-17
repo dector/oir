@@ -1,4 +1,4 @@
-package gh
+package registry
 
 import "testing"
 
@@ -6,7 +6,7 @@ func asset(name string) Asset {
 	return Asset{Name: name}
 }
 
-func TestPickAsset(t *testing.T) {
+func TestPick(t *testing.T) {
 	linuxAMD64 := Platform{OS: "linux", Arch: "amd64"}
 	darwinARM64 := Platform{OS: "darwin", Arch: "arm64"}
 
@@ -108,7 +108,7 @@ func TestPickAsset(t *testing.T) {
 				assets = append(assets, asset(n))
 			}
 
-			got, err := PickAsset(assets, tt.repo, tt.p)
+			got, err := Pick(assets, tt.repo, tt.p)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got %q", got.Name)
@@ -116,7 +116,7 @@ func TestPickAsset(t *testing.T) {
 				return
 			}
 			if err != nil {
-				t.Fatalf("PickAsset: %v", err)
+				t.Fatalf("Pick: %v", err)
 			}
 			if got.Name != tt.want {
 				t.Fatalf("got %q, want %q", got.Name, tt.want)
