@@ -34,7 +34,7 @@ func TestVersionCommand(t *testing.T) {
 
 func TestHelpListsCommands(t *testing.T) {
 	got := run(t, "help")
-	for _, want := range []string{"version", "help"} {
+	for _, want := range []string{"version", "help", "update"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("help output missing %q:\n%s", want, got)
 		}

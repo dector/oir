@@ -32,12 +32,13 @@ type Installer struct {
 
 // Result describes a finished install.
 type Result struct {
-	Spec    spec.Spec
-	Version string
-	Asset   string
-	Binary  string
-	Link    string
-	Changed bool
+	Spec     spec.Spec
+	Version  string
+	Asset    string
+	Binary   string
+	Link     string
+	Changed  bool
+	UpToDate bool // the requested version was already installed unchanged
 }
 
 // Run resolves and installs sp.
@@ -72,6 +73,7 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 				return nil, err
 			}
 			res.Changed = changed
+			res.UpToDate = true
 
 			return res, nil
 		}

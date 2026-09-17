@@ -55,6 +55,39 @@ func TestKeyAndString(t *testing.T) {
 	}
 }
 
+func TestFromKey(t *testing.T) {
+	sp, err := FromKey("github/dector/ror")
+	if err != nil {
+		t.Fatalf("FromKey: %v", err)
+	}
+	want := Spec{Backend: BackendGitHub, Owner: "dector", Repo: "ror"}
+	if sp != want {
+		t.Errorf("FromKey = %+v, want %+v", sp, want)
+	}
+	if sp.Version != "" {
+		t.Errorf("FromKey version = %q, want empty", sp.Version)
+	}
+}
+
+func TestFromKeyRoundTrip(t *testing.T) {
+	in := Spec{Backend: BackendGitHub, Owner: "BurntSushi", Repo: "Ripgrep"}
+	out, err := FromKey(in.Key())
+	if err != nil {
+		t.Fatalf("FromKey: %v", err)
+	}
+	if out.Key() != in.Key() {
+		t.Errorf("round trip key = %q, want %q", out.Key(), in.Key())
+	}
+}
+
+func TestFromKeyInvalid(t *testing.T) {
+	for _, in := range []string{"", "github", "github/only", "github//repo", "npm:left-pad", "github/o/tool/extra"} {
+		if _, err := FromKey(in); err == nil {
+			t.Errorf("FromKey(%q): expected error", in)
+		}
+	}
+}
+
 func TestKeyLowercasesButStringPreservesCase(t *testing.T) {
 	sp := Spec{Backend: BackendGitHub, Owner: "BurntSushi", Repo: "Ripgrep"}
 

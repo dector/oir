@@ -23,6 +23,7 @@ func New() *cli.Command {
 		UsageText: "oir <command> [arguments]",
 		Commands: []*cli.Command{
 			newInstallCommand(),
+			newUpdateCommand(),
 			newAliasCommand(),
 			newVersionCommand(),
 		},

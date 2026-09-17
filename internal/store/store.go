@@ -2,10 +2,13 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -40,6 +43,96 @@ func (s *Store) Dir(key, version string) string {
 // BinaryPath returns the expected path of an installed binary.
 func (s *Store) BinaryPath(key, version, name string) string {
 	return filepath.Join(s.Dir(key, version), name)
+}
+
+// Installed describes one installed version of a tool.
+type Installed struct {
+	Key     string // store key, e.g. "github/dector/ror"
+	Version string // version directory, e.g. "v1.2.3"
+	Meta    Meta   // metadata recorded at install time, zero when absent
+}
+
+// List returns every installed version, sorted by key then version.
+//
+// A version directory is one that holds the installed files directly, i.e. it
+// contains regular files but no subdirectories. This matches the layout written
+// by Place and also finds installs made before metadata was recorded.
+func (s *Store) List() ([]Installed, error) {
+	root := filepath.Join(s.Root, "installs")
+
+	var out []Installed
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		// Skip staging and trash directories left by Place, and any other
+		// hidden directory.
+		if path != root && strings.HasPrefix(d.Name(), ".") {
+			return fs.SkipDir
+		}
+
+		isVersion, hasFile, err := versionDir(path)
+		if err != nil {
+			return err
+		}
+		if path == root || !isVersion || !hasFile {
+			return nil
+		}
+
+		rel, err := filepath.Rel(root, filepath.Dir(path))
+		if err != nil {
+			return err
+		}
+		key := filepath.ToSlash(rel)
+
+		meta, _, err := s.ReadMeta(key, d.Name())
+		if err != nil {
+			return err
+		}
+
+		out = append(out, Installed{Key: key, Version: d.Name(), Meta: meta})
+
+		return fs.SkipDir
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Key != out[j].Key {
+			return out[i].Key < out[j].Key
+		}
+		return out[i].Version < out[j].Version
+	})
+
+	return out, nil
+}
+
+// versionDir reports whether path directly holds installed files: no
+// subdirectories, and at least one non-hidden regular file.
+func versionDir(path string) (isVersion, hasFile bool, err error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return false, false, err
+	}
+
+	isVersion = true
+	for _, e := range entries {
+		if e.IsDir() {
+			return false, false, nil
+		}
+		if !strings.HasPrefix(e.Name(), ".") {
+			hasFile = true
+		}
+	}
+
+	return isVersion, hasFile, nil
 }
 
 // Has reports whether a version directory exists and is non-empty.

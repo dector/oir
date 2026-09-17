@@ -113,6 +113,67 @@ func TestHasIsFalseForMissing(t *testing.T) {
 	}
 }
 
+func TestList(t *testing.T) {
+	s := &Store{Root: t.TempDir()}
+
+	// A version with metadata, and one installed before metadata existed.
+	write := func(key, version, name string, meta *Meta) {
+		t.Helper()
+		dir := s.Dir(key, version)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("bin"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if meta != nil {
+			if err := s.WriteMeta(key, version, *meta); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	write("github/o/tool", "v2", "tool", &Meta{Asset: "tool.tar.gz"})
+	write("github/o/tool", "v1", "tool", nil)
+	write("github/o/other", "latest", "other", &Meta{Asset: "other.tar.gz"})
+
+	// Staging leftovers must not be reported.
+	if err := os.MkdirAll(filepath.Join(s.Root, "installs", "github", "o", "tool", ".staging-x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	want := []Installed{
+		{Key: "github/o/other", Version: "latest", Meta: Meta{Asset: "other.tar.gz"}},
+		{Key: "github/o/tool", Version: "v1"},
+		{Key: "github/o/tool", Version: "v2", Meta: Meta{Asset: "tool.tar.gz"}},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("List len = %d (%v), want %d", len(got), got, len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("List[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestListMissingRoot(t *testing.T) {
+	s := &Store{Root: filepath.Join(t.TempDir(), "nope")}
+
+	got, err := s.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("List = %v, want empty", got)
+	}
+}
+
 func TestMetaRoundTrip(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
 	key, version := "github/o/tool", "latest"

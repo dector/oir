@@ -190,11 +190,19 @@ func TestRunIsIdempotent(t *testing.T) {
 	in := newInstaller(t, f, dataDir, binDir)
 
 	sp := spec.Spec{Backend: spec.BackendGitHub, Owner: "o", Repo: "tool"}
-	if _, err := in.Run(context.Background(), sp); err != nil {
+	first, err := in.Run(context.Background(), sp)
+	if err != nil {
 		t.Fatalf("first Run: %v", err)
 	}
-	if _, err := in.Run(context.Background(), sp); err != nil {
+	if first.UpToDate {
+		t.Error("first Run UpToDate = true, want false")
+	}
+	second, err := in.Run(context.Background(), sp)
+	if err != nil {
 		t.Fatalf("second Run: %v", err)
+	}
+	if !second.UpToDate {
+		t.Error("second Run UpToDate = false, want true")
 	}
 
 	if got := f.downloads.Load(); got != 1 {

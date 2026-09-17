@@ -38,6 +38,27 @@ func (s Spec) Key() string {
 	return strings.ToLower(fmt.Sprintf("%s/%s/%s", s.Backend, s.Owner, s.Repo))
 }
 
+// FromKey is the inverse of Key: it turns a store key such as
+// "github/dector/ror" back into a Spec. The returned spec has no version,
+// so callers that resolve "latest" can use it directly.
+func FromKey(key string) (Spec, error) {
+	backend, rest, ok := strings.Cut(strings.TrimSpace(key), "/")
+	if !ok {
+		return Spec{}, fmt.Errorf("invalid store key %q: want backend/owner/repo", key)
+	}
+	owner, repo, ok := strings.Cut(rest, "/")
+	if !ok || !nameRE.MatchString(owner) || !nameRE.MatchString(repo) {
+		return Spec{}, fmt.Errorf("invalid store key %q: want backend/owner/repo", key)
+	}
+
+	switch strings.ToLower(backend) {
+	case string(BackendGitHub), "gh":
+		return Spec{Backend: BackendGitHub, Owner: owner, Repo: repo}, nil
+	default:
+		return Spec{}, fmt.Errorf("invalid store key %q: unknown backend %q", key, backend)
+	}
+}
+
 var nameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // Parse parses "gh:owner/repo", "github:owner/repo" or "owner/repo".
