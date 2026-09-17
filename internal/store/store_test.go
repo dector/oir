@@ -25,7 +25,7 @@ func TestOwns(t *testing.T) {
 
 	owned := []string{
 		"/data/oir",
-		"/data/oir/installs/github-dector-ror/latest/ror",
+		"/data/oir/installs/github/dector/ror/latest/ror",
 		"/data/oir/installs/../installs/x",
 	}
 	for _, p := range owned {
@@ -56,7 +56,7 @@ func TestPlaceIsAtomicAndReplaces(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := s.Place("github-dector-ror", "latest", src, "ror")
+	got, err := s.Place("github/dector/ror", "latest", src, "ror")
 	if err != nil {
 		t.Fatalf("Place: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestPlaceIsAtomicAndReplaces(t *testing.T) {
 	if string(body) != "v1" {
 		t.Fatalf("got %q, want v1", body)
 	}
-	if !s.Has("github-dector-ror", "latest") {
+	if !s.Has("github/dector/ror", "latest") {
 		t.Fatal("Has() = false after Place")
 	}
 
@@ -84,7 +84,7 @@ func TestPlaceIsAtomicAndReplaces(t *testing.T) {
 	if err := os.WriteFile(src, []byte("v2"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Place("github-dector-ror", "latest", src, "ror"); err != nil {
+	if _, err := s.Place("github/dector/ror", "latest", src, "ror"); err != nil {
 		t.Fatalf("Place (replace): %v", err)
 	}
 
@@ -108,7 +108,7 @@ func TestPlaceIsAtomicAndReplaces(t *testing.T) {
 
 func TestHasIsFalseForMissing(t *testing.T) {
 	s := &Store{Root: t.TempDir()}
-	if s.Has("github-x-y", "latest") {
+	if s.Has("github/x/y", "latest") {
 		t.Error("Has() = true for a missing install")
 	}
 }

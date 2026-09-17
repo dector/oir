@@ -265,7 +265,7 @@ func TestRunUsesRequestedVersion(t *testing.T) {
 	if res.Version != "v1.2.3" {
 		t.Errorf("version = %q, want v1.2.3", res.Version)
 	}
-	want := filepath.Join(dataDir, "installs", "github-o-tool", "v1.2.3", "tool")
+	want := filepath.Join(dataDir, "installs", "github", "o", "tool", "v1.2.3", "tool")
 	if res.Binary != want {
 		t.Errorf("binary = %q, want %q", res.Binary, want)
 	}

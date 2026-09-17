@@ -42,7 +42,7 @@ func TestParse(t *testing.T) {
 
 func TestKeyAndString(t *testing.T) {
 	sp := Spec{Backend: BackendGitHub, Owner: "dector", Repo: "ror"}
-	if got, want := sp.Key(), "github-dector-ror"; got != want {
+	if got, want := sp.Key(), "github/dector/ror"; got != want {
 		t.Errorf("Key() = %q, want %q", got, want)
 	}
 	if got, want := sp.String(), "github:dector/ror"; got != want {
@@ -58,7 +58,7 @@ func TestKeyAndString(t *testing.T) {
 func TestKeyLowercasesButStringPreservesCase(t *testing.T) {
 	sp := Spec{Backend: BackendGitHub, Owner: "BurntSushi", Repo: "Ripgrep"}
 
-	if got, want := sp.Key(), "github-burntsushi-ripgrep"; got != want {
+	if got, want := sp.Key(), "github/burntsushi/ripgrep"; got != want {
 		t.Errorf("Key() = %q, want %q", got, want)
 	}
 	if got, want := sp.String(), "github:BurntSushi/Ripgrep"; got != want {

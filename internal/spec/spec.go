@@ -32,9 +32,10 @@ func (s Spec) String() string {
 	return out
 }
 
-// Key returns the store directory name, e.g. "github-dector-ror".
+// Key returns the store-relative directory path, e.g. "github/dector/ror".
+// The backend names the host, and owner/repo nest underneath it.
 func (s Spec) Key() string {
-	return strings.ToLower(fmt.Sprintf("%s-%s-%s", s.Backend, s.Owner, s.Repo))
+	return strings.ToLower(fmt.Sprintf("%s/%s/%s", s.Backend, s.Owner, s.Repo))
 }
 
 var nameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
