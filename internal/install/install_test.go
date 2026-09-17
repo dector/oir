@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -246,6 +247,48 @@ func TestRunRequiresChecksumByDefault(t *testing.T) {
 	in.NoVerify = true
 	if _, err := in.Run(context.Background(), sp); err != nil {
 		t.Fatalf("Run with NoVerify: %v", err)
+	}
+}
+
+func TestRunWarnsAndReinstallsWhenAssetChanges(t *testing.T) {
+	dataDir, binDir := t.TempDir(), t.TempDir()
+	sp := spec.Spec{Backend: spec.BackendGitHub, Owner: "o", Repo: "tool"}
+
+	first := makeArchive(t, "v1")
+	f1 := &fakeGitHub{archive: first, digest: "sha256:" + sha256Of(first)}
+	in1 := newInstaller(t, f1, dataDir, binDir)
+	var stderr bytes.Buffer
+	in1.Stderr = &stderr
+
+	if _, err := in1.Run(context.Background(), sp); err != nil {
+		t.Fatalf("first Run: %v", err)
+	}
+	stderr.Reset()
+
+	// Republish the same version with different bytes.
+	second := makeArchive(t, "v2")
+	f2 := &fakeGitHub{archive: second, digest: "sha256:" + sha256Of(second)}
+	in2 := newInstaller(t, f2, dataDir, binDir)
+	in2.Stderr = &stderr
+
+	res, err := in2.Run(context.Background(), sp)
+	if err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+
+	if got := f2.downloads.Load(); got != 1 {
+		t.Errorf("downloads = %d, want 1 (changed asset should reinstall)", got)
+	}
+	if !strings.Contains(stderr.String(), "warn:") {
+		t.Errorf("stderr = %q, want a warn: line", stderr.String())
+	}
+
+	body, err := os.ReadFile(res.Binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "v2" {
+		t.Errorf("installed binary = %q, want v2", body)
 	}
 }
 

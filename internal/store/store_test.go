@@ -112,3 +112,32 @@ func TestHasIsFalseForMissing(t *testing.T) {
 		t.Error("Has() = true for a missing install")
 	}
 }
+
+func TestMetaRoundTrip(t *testing.T) {
+	s := &Store{Root: t.TempDir()}
+	key, version := "github/o/tool", "latest"
+
+	if _, ok, err := s.ReadMeta(key, version); err != nil || ok {
+		t.Fatalf("ReadMeta on missing = (%v, %v), want (false, nil)", ok, err)
+	}
+
+	if err := os.MkdirAll(s.Dir(key, version), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	want := Meta{Asset: "tool-linux-amd64.tar.gz", Digest: "sha256:abc", AssetID: 7}
+	if err := s.WriteMeta(key, version, want); err != nil {
+		t.Fatalf("WriteMeta: %v", err)
+	}
+
+	got, ok, err := s.ReadMeta(key, version)
+	if err != nil {
+		t.Fatalf("ReadMeta: %v", err)
+	}
+	if !ok {
+		t.Fatal("ReadMeta ok = false after WriteMeta")
+	}
+	if got != want {
+		t.Errorf("ReadMeta = %+v, want %+v", got, want)
+	}
+}

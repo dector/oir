@@ -57,22 +57,31 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 
 	res := &Result{Spec: sp, Version: version, Binary: binaryPath, Link: filepath.Join(in.BinDir, name)}
 
-	if in.Store.Has(key, version) && !in.Force {
-		fmt.Fprintf(in.Stdout, "%s %s is already installed\n", sp, version)
-		changed, err := in.linkBinary(key, version, name, res)
-		if err != nil {
-			return nil, err
-		}
-		res.Changed = changed
-
-		return res, nil
-	}
-
 	asset, err := gh.PickAsset(rel.Assets, sp.Repo, in.Platform)
 	if err != nil {
 		return nil, err
 	}
 	res.Asset = asset.Name
+
+	if in.Store.Has(key, version) && !in.Force {
+		meta, ok, _ := in.Store.ReadMeta(key, version)
+		if ok && !assetChanged(meta, asset) {
+			fmt.Fprintf(in.Stdout, "%s %s is already installed\n", sp, version)
+			changed, err := in.linkBinary(key, version, name, res)
+			if err != nil {
+				return nil, err
+			}
+			res.Changed = changed
+
+			return res, nil
+		}
+		if ok {
+			fmt.Fprintf(in.Stderr, "warn: %s %s changed (%s -> %s), reinstalling\n",
+				sp, version, meta.Asset, asset.Name)
+		}
+		// No metadata, or the asset changed: reinstall to record (or refresh)
+		// the install. This also backfills metadata for pre-existing installs.
+	}
 
 	tmpFile, err := in.download(ctx, asset)
 	if err != nil {
@@ -91,6 +100,14 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 
 	if _, err := in.Store.Place(key, version, binPath, name); err != nil {
 		return nil, fmt.Errorf("install into store: %w", err)
+	}
+
+	if err := in.Store.WriteMeta(key, version, store.Meta{
+		Asset:   asset.Name,
+		Digest:  asset.Digest,
+		AssetID: asset.ID,
+	}); err != nil {
+		fmt.Fprintf(in.Stderr, "warning: record install metadata: %v\n", err)
 	}
 
 	changed, err := in.linkBinary(key, version, name, res)
@@ -258,6 +275,23 @@ func (in *Installer) extractBinary(archivePath, repo string) (string, error) {
 	}
 
 	return staged.Name(), nil
+}
+
+// assetChanged reports whether the release asset differs from the one recorded
+// at install time. It prefers the GitHub asset digest, then the asset id, and
+// falls back to the asset name.
+func assetChanged(m store.Meta, a gh.Asset) bool {
+	if m.Asset == "" {
+		return true
+	}
+	if m.Digest != "" && a.Digest != "" && m.Digest != a.Digest {
+		return true
+	}
+	if m.AssetID != 0 && a.ID != 0 && m.AssetID != a.ID {
+		return true
+	}
+
+	return m.Asset != a.Name
 }
 
 // findChecksumAsset locates a published checksums file among the release assets.
