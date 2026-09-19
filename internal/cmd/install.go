@@ -68,8 +68,13 @@ func runInstall(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	fmt.Fprintf(cmd.Writer, "%s %s %s\n  %s %s\n  %s %s\n",
-		style.Success("installed"), style.Name(res.Spec.String()), res.Version,
+	// The installer reports the skip for an up-to-date tool; claiming
+	// "installed" here would contradict it.
+	if !res.UpToDate {
+		fmt.Fprintf(cmd.Writer, "%s %s %s\n", style.Success("installed"), style.Name(res.Spec.String()), res.Version)
+	}
+
+	fmt.Fprintf(cmd.Writer, "  %s %s\n  %s %s\n",
 		style.Muted("binary"), res.Binary,
 		style.Muted("link  "), res.Link)
 

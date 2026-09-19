@@ -212,6 +212,35 @@ func TestRunIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestRunReportsSkippedInstall(t *testing.T) {
+	archive := makeArchive(t, "binary")
+	f := &fakeGitHub{archive: archive, digest: "sha256:" + sha256Of(archive)}
+
+	dataDir, binDir := t.TempDir(), t.TempDir()
+	in := newInstaller(t, f, dataDir, binDir)
+
+	sp := spec.Spec{Backend: spec.BackendGitHub, Owner: "o", Repo: "tool"}
+	if _, err := in.Run(context.Background(), sp); err != nil {
+		t.Fatalf("first Run: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	in.Stdout = &stdout
+
+	if _, err := in.Run(context.Background(), sp); err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+
+	got := stdout.String()
+	if !strings.Contains(got, "skipping") {
+		t.Errorf("second run output should mention skipping, got %q", got)
+	}
+	// "installed" may only appear as part of "already installed".
+	if n := strings.Count(got, "installed"); n != 1 {
+		t.Errorf("second run output mentions install %d times, want 1: %q", n, got)
+	}
+}
+
 func TestRunVerifiesChecksumFromChecksumsFile(t *testing.T) {
 	archive := makeArchive(t, "binary")
 	f := &fakeGitHub{archive: archive, checksums: true}

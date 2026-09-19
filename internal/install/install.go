@@ -112,7 +112,7 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 	if in.Store.Has(key, version) && !in.Force {
 		meta, ok, _ := in.Store.ReadMeta(key, version)
 		if ok && !assetChanged(meta, asset) {
-			fmt.Fprintf(in.Stdout, "%s %s is already installed\n", style.Name(sp.String()), version)
+			fmt.Fprintf(in.Stdout, "%s %s %s, already installed\n", style.Muted("skipping"), style.Name(sp.String()), version)
 			changed, err := in.linkBinary(name, res)
 			if err != nil {
 				return nil, err
