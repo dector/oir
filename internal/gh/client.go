@@ -21,6 +21,7 @@ import (
 	"github.com/dector/oir/internal/archive"
 	"github.com/dector/oir/internal/progress"
 	"github.com/dector/oir/internal/registry"
+	"github.com/dector/oir/internal/style"
 	"github.com/dector/oir/internal/verify"
 	"github.com/dector/oir/internal/version"
 )
@@ -148,7 +149,7 @@ func (c *Client) verify(ctx context.Context, log io.Writer, req registry.Materia
 		if err := verify.CheckSHA256(path, req.Asset.Digest); err != nil {
 			return err
 		}
-		fmt.Fprintf(log, "  verified %s\n", req.Asset.Digest)
+		fmt.Fprintf(log, "  %s %s\n", style.Success("verified"), req.Asset.Digest)
 
 		return nil
 	}
@@ -161,13 +162,13 @@ func (c *Client) verify(ctx context.Context, log io.Writer, req registry.Materia
 		if err := verify.CheckSHA256(path, digest); err != nil {
 			return err
 		}
-		fmt.Fprintf(log, "  verified sha256:%s (from %s)\n", digest, sums.Name)
+		fmt.Fprintf(log, "  %s sha256:%s (from %s)\n", style.Success("verified"), digest, sums.Name)
 
 		return nil
 	}
 
 	if req.NoVerify {
-		fmt.Fprintf(log, "warning: no checksum published for %s, skipping verification\n", req.Asset.Name)
+		fmt.Fprintf(log, "%s no checksum published for %s, skipping verification\n", style.Warn("warning:"), req.Asset.Name)
 		return nil
 	}
 

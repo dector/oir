@@ -7,11 +7,12 @@ import (
 	"os"
 
 	"github.com/dector/oir/internal/cmd"
+	"github.com/dector/oir/internal/style"
 )
 
 func main() {
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		fmt.Fprintf(os.Stderr, "oir: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s %v\n", style.Error("oir:"), err)
 		os.Exit(1)
 	}
 }

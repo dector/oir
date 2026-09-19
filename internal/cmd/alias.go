@@ -1,11 +1,14 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/dector/oir/internal/alias"
+	"github.com/dector/oir/internal/style"
 	"github.com/urfave/cli/v3"
 )
 
@@ -90,12 +93,39 @@ func runAliasGet(_ context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	w := tabwriter.NewWriter(cmd.Writer, 0, 0, 2, ' ', 0)
+	// Style after tabwriter has aligned the columns: escape codes would count
+	// towards the column widths.
+	var buf bytes.Buffer
+
+	w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
 	for _, e := range entries {
 		fmt.Fprintf(w, "%s\t%s\n", e.Key, e.Spec)
 	}
 
-	return w.Flush()
+	if err := w.Flush(); err != nil {
+		return err
+	}
+
+	table := strings.TrimSuffix(buf.String(), "\n")
+	if table == "" {
+		return nil
+	}
+
+	for _, line := range strings.Split(table, "\n") {
+		fmt.Fprintln(cmd.Writer, styleKey(line))
+	}
+
+	return nil
+}
+
+// styleKey styles the alias key in a rendered table row.
+func styleKey(line string) string {
+	key, spec, ok := style.SplitColumns(line)
+	if !ok {
+		return line
+	}
+
+	return style.Name(key) + spec
 }
 
 func runAliasSet(_ context.Context, cmd *cli.Command) error {
@@ -117,7 +147,7 @@ func runAliasSet(_ context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	fmt.Fprintf(cmd.Writer, "%s = %s\n", args[0], value)
+	fmt.Fprintf(cmd.Writer, "%s = %s\n", style.Name(args[0]), value)
 
 	return nil
 }
@@ -141,7 +171,7 @@ func runAliasRemove(_ context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("no alias registered with name %q", args[0])
 	}
 
-	fmt.Fprintf(cmd.Writer, "removed %s\n", args[0])
+	fmt.Fprintf(cmd.Writer, "%s %s\n", style.Success("removed"), style.Name(args[0]))
 
 	return nil
 }

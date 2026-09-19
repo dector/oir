@@ -13,6 +13,7 @@ import (
 	"github.com/dector/oir/internal/registry"
 	"github.com/dector/oir/internal/spec"
 	"github.com/dector/oir/internal/store"
+	"github.com/dector/oir/internal/style"
 )
 
 // Options configures an Installer.
@@ -111,7 +112,7 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 	if in.Store.Has(key, version) && !in.Force {
 		meta, ok, _ := in.Store.ReadMeta(key, version)
 		if ok && !assetChanged(meta, asset) {
-			fmt.Fprintf(in.Stdout, "%s %s is already installed\n", sp, version)
+			fmt.Fprintf(in.Stdout, "%s %s is already installed\n", style.Name(sp.String()), version)
 			changed, err := in.linkBinary(name, res)
 			if err != nil {
 				return nil, err
@@ -122,8 +123,8 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 			return res, nil
 		}
 		if ok {
-			fmt.Fprintf(in.Stderr, "warn: %s %s changed (%s -> %s), reinstalling\n",
-				sp, version, meta.Asset, asset.Name)
+			fmt.Fprintf(in.Stderr, "%s %s %s changed (%s -> %s), reinstalling\n",
+				style.Warn("warn:"), style.Name(sp.String()), version, meta.Asset, asset.Name)
 		}
 		// No metadata, or the asset changed: reinstall to record (or refresh)
 		// the install. This also backfills metadata for pre-existing installs.
@@ -163,7 +164,7 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 		Digest:  asset.Digest,
 		AssetID: asset.ID,
 	}); err != nil {
-		fmt.Fprintf(in.Stderr, "warning: record install metadata: %v\n", err)
+		fmt.Fprintf(in.Stderr, "%s record install metadata: %v\n", style.Warn("warning:"), err)
 	}
 
 	changed, err := in.linkBinary(name, res)

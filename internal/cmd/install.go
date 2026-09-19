@@ -12,6 +12,7 @@ import (
 	"github.com/dector/oir/internal/registry"
 	"github.com/dector/oir/internal/spec"
 	"github.com/dector/oir/internal/store"
+	"github.com/dector/oir/internal/style"
 	"github.com/urfave/cli/v3"
 )
 
@@ -60,18 +61,20 @@ func runInstall(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	fmt.Fprintf(cmd.Writer, "resolving %s\n", sp)
+	fmt.Fprintf(cmd.Writer, "resolving %s\n", style.Name(sp.String()))
 
 	res, err := in.Run(ctx, sp)
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(cmd.Writer, "installed %s %s\n  binary %s\n  link   %s\n",
-		res.Spec, res.Version, res.Binary, res.Link)
+	fmt.Fprintf(cmd.Writer, "%s %s %s\n  %s %s\n  %s %s\n",
+		style.Success("installed"), style.Name(res.Spec.String()), res.Version,
+		style.Muted("binary"), res.Binary,
+		style.Muted("link  "), res.Link)
 
 	if !pathHasDir(os.Getenv("PATH"), filepath.Dir(res.Link)) {
-		fmt.Fprintf(cmd.ErrWriter, "warning: %s is not on your PATH\n", filepath.Dir(res.Link))
+		fmt.Fprintf(cmd.ErrWriter, "%s %s is not on your PATH\n", style.Warn("warning:"), filepath.Dir(res.Link))
 	}
 
 	return nil

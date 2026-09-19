@@ -6,17 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/fatih/color"
+	"github.com/dector/oir/internal/style"
 	"github.com/urfave/cli/v3"
-)
-
-var (
-	// helpHeadingStyle styles the section labels (NAME:, USAGE:, ...).
-	helpHeadingStyle = color.New(color.Bold, color.FgHiCyan)
-	// helpNameStyle styles command and flag names in list entries.
-	helpNameStyle = color.New(color.Bold, color.FgHiGreen)
-	// helpArgStyle mutes the argument placeholders in usage lines.
-	helpArgStyle = color.New(color.Faint)
 )
 
 // helpLabels are the section labels the urfave/cli help templates emit on a
@@ -66,7 +57,7 @@ func colorizeHelp(help string) string {
 		label := strings.TrimSpace(line)
 		if helpLabels[label] {
 			section = label
-			lines[i] = helpHeadingStyle.Sprint(label)
+			lines[i] = style.Heading(label)
 
 			continue
 		}
@@ -77,9 +68,7 @@ func colorizeHelp(help string) string {
 		case "COMMANDS:", "OPTIONS:", "GLOBAL OPTIONS:":
 			lines[i] = styleListLine(line)
 		case "USAGE:":
-			lines[i] = helpArgPattern.ReplaceAllStringFunc(line, func(m string) string {
-				return helpArgStyle.Sprint(m)
-			})
+			lines[i] = helpArgPattern.ReplaceAllStringFunc(line, style.Muted)
 		}
 	}
 
@@ -94,7 +83,7 @@ func styleNameLine(line string) string {
 		return line
 	}
 
-	return helpNameStyle.Sprint(name) + " - " + usage
+	return style.Name(name) + " - " + usage
 }
 
 // styleListLine styles the first column of a command or flag entry, e.g.
@@ -103,33 +92,10 @@ func styleListLine(line string) string {
 	indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
 	body := line[len(indent):]
 
-	name, desc, ok := splitColumns(body)
+	name, desc, ok := style.SplitColumns(body)
 	if !ok {
 		return line
 	}
 
-	return indent + helpNameStyle.Sprint(name) + desc
-}
-
-// splitColumns splits a tabwriter row into its first cell and the padding plus
-// everything after it. It finds the first run of two or more spaces, which is
-// the column gap the help printer writes.
-func splitColumns(body string) (name, rest string, ok bool) {
-	for i := 1; i < len(body); i++ {
-		if body[i-1] == ' ' || body[i] != ' ' {
-			continue
-		}
-
-		j := i
-		for j < len(body) && body[j] == ' ' {
-			j++
-		}
-		if j-i < 2 || j == len(body) {
-			continue
-		}
-
-		return body[:i], body[i:], true
-	}
-
-	return "", "", false
+	return indent + style.Name(name) + desc
 }

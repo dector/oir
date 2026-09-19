@@ -7,6 +7,7 @@ import (
 
 	"github.com/dector/oir/internal/spec"
 	"github.com/dector/oir/internal/store"
+	"github.com/dector/oir/internal/style"
 	"github.com/urfave/cli/v3"
 )
 
@@ -48,7 +49,7 @@ func runUpdate(ctx context.Context, cmd *cli.Command) error {
 
 	keys := uniqueKeys(installed)
 	if len(keys) == 0 {
-		fmt.Fprintln(cmd.Writer, "no tools installed")
+		fmt.Fprintln(cmd.Writer, style.Muted("no tools installed"))
 
 		return nil
 	}
@@ -64,7 +65,7 @@ func runUpdate(ctx context.Context, cmd *cli.Command) error {
 	for _, key := range keys {
 		sp, err := spec.FromKey(key)
 		if err != nil {
-			fmt.Fprintf(cmd.ErrWriter, "%s: %v\n", key, err)
+			fmt.Fprintf(cmd.ErrWriter, "%s: %s\n", style.Name(key), style.Error(err.Error()))
 			failed = append(failed, key)
 
 			continue
@@ -72,7 +73,7 @@ func runUpdate(ctx context.Context, cmd *cli.Command) error {
 
 		res, err := in.Run(ctx, sp)
 		if err != nil {
-			fmt.Fprintf(cmd.ErrWriter, "%s: %v\n", sp, err)
+			fmt.Fprintf(cmd.ErrWriter, "%s: %s\n", style.Name(sp.String()), style.Error(err.Error()))
 			failed = append(failed, sp.String())
 
 			continue
@@ -82,13 +83,13 @@ func runUpdate(ctx context.Context, cmd *cli.Command) error {
 			current++
 		} else {
 			updated++
-			fmt.Fprintf(cmd.Writer, "updated %s to %s\n", sp, res.Version)
+			fmt.Fprintf(cmd.Writer, "%s %s to %s\n", style.Success("updated"), style.Name(sp.String()), res.Version)
 		}
 	}
 
-	fmt.Fprintf(cmd.Writer, "\n%d updated, %d up to date", updated, current)
+	fmt.Fprintf(cmd.Writer, "\n%s, %d up to date", style.Success(fmt.Sprintf("%d updated", updated)), current)
 	if len(failed) > 0 {
-		fmt.Fprintf(cmd.Writer, ", %d failed: %s", len(failed), strings.Join(failed, ", "))
+		fmt.Fprintf(cmd.Writer, ", %s", style.Error(fmt.Sprintf("%d failed: %s", len(failed), strings.Join(failed, ", "))))
 	}
 	fmt.Fprintln(cmd.Writer)
 
