@@ -6,9 +6,14 @@ package cmd
 
 import (
 	"context"
+	"sync"
 
 	"github.com/urfave/cli/v3"
 )
+
+// colorOnce guards the one-time restyling of the shared urfave/cli help
+// templates, which must not be wrapped in color codes more than once.
+var colorOnce sync.Once
 
 // Run builds and executes the oir CLI with the given arguments.
 func Run(ctx context.Context, args []string) error {
@@ -17,6 +22,8 @@ func Run(ctx context.Context, args []string) error {
 
 // New builds the root command.
 func New() *cli.Command {
+	colorOnce.Do(colorHelp)
+
 	return &cli.Command{
 		Name:      "oir",
 		Usage:     "install developer tools from GitHub",
