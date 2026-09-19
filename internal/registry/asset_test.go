@@ -68,6 +68,38 @@ func TestPick(t *testing.T) {
 			want:   "tool-macos-aarch64.tar.gz",
 		},
 		{
+			name: "raw binary without archive extension",
+			assets: []string{
+				"checksums.txt",
+				"tool-1.2.3-darwin-amd64",
+				"tool-1.2.3-linux-amd64",
+				"tool-1.2.3-windows-amd64.exe",
+			},
+			repo: "tool",
+			p:    linuxAMD64,
+			want: "tool-1.2.3-linux-amd64",
+		},
+		{
+			name: "prefers archive over raw binary",
+			assets: []string{
+				"tool-1.2.3-linux-amd64",
+				"tool-1.2.3-linux-amd64.tar.gz",
+			},
+			repo: "tool",
+			p:    linuxAMD64,
+			want: "tool-1.2.3-linux-amd64.tar.gz",
+		},
+		{
+			name: "ignores raw checksum sidecar",
+			assets: []string{
+				"tool-1.2.3-linux-amd64.sha256",
+				"tool-1.2.3-linux-amd64",
+			},
+			repo: "tool",
+			p:    linuxAMD64,
+			want: "tool-1.2.3-linux-amd64",
+		},
+		{
 			name: "ignores checksum files",
 			assets: []string{
 				"tool-linux-amd64.tar.gz.sha256",
@@ -88,6 +120,13 @@ func TestPick(t *testing.T) {
 		{
 			name:    "unsupported archive format",
 			assets:  []string{"tool-linux-amd64.tar.xz"},
+			repo:    "tool",
+			p:       linuxAMD64,
+			wantErr: true,
+		},
+		{
+			name:    "unsupported compressed single file",
+			assets:  []string{"tool-linux-amd64.gz"},
 			repo:    "tool",
 			p:       linuxAMD64,
 			wantErr: true,

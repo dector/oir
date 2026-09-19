@@ -24,7 +24,9 @@ var archAliases = map[string][]string{
 	"arm":   {"armv7", "armv6", "armhf", "arm"},
 }
 
-// archiveExtensions are the archive formats oir can extract.
+// archiveExtensions are the archive formats oir can extract. Assets without
+// one of these are treated as raw single-file binaries, which many projects
+// publish, for example "tool-1.2.3-linux-amd64".
 var archiveExtensions = []string{".tar.gz", ".tgz", ".zip"}
 
 // excludedTokens mark assets that are not the tool binary itself.
@@ -38,7 +40,7 @@ var excludedSuffixes = []string{
 	".txt", ".json", ".yml", ".yaml", ".md",
 	".sig", ".asc", ".pem", ".sbom", ".spdx",
 	".deb", ".rpm", ".apk", ".dmg", ".pkg", ".msi",
-	".xz", ".zst", ".bz2", ".7z", ".tar",
+	".xz", ".zst", ".bz2", ".7z", ".tar", ".gz",
 }
 
 // variantTokens are tolerated but deprioritised, so a plain build wins.
@@ -68,11 +70,12 @@ func Pick(assets []Asset, repo string, p Platform) (Asset, error) {
 
 func scoreAsset(name, repo string, p Platform) (int, bool) {
 	norm := normalize(name)
+	lower := strings.ToLower(name)
+	archived := hasAnySuffix(lower, archiveExtensions)
 
-	if !hasAnySuffix(strings.ToLower(name), archiveExtensions) {
-		return 0, false
-	}
-	if hasAnySuffix(strings.ToLower(name), excludedSuffixes) {
+	// Reject known non-binary formats. This only applies to assets that are
+	// not archives, so ".tar.gz" is not tripped up by the ".gz" suffix.
+	if !archived && hasAnySuffix(lower, excludedSuffixes) {
 		return 0, false
 	}
 	for _, tok := range excludedTokens {
@@ -87,7 +90,12 @@ func scoreAsset(name, repo string, p Platform) (int, bool) {
 		return 0, false
 	}
 
-	score := 10 // has an extractable archive extension
+	// Prefer archives, which may bundle docs and completions, over raw
+	// single-file binaries when a release publishes both.
+	score := 0
+	if archived {
+		score += 10
+	}
 	if containsToken(norm, normalize(repo)) {
 		score += 100
 	}

@@ -148,6 +148,34 @@ func TestExtractRejectsUnsupported(t *testing.T) {
 	}
 }
 
+func TestIsArchive(t *testing.T) {
+	tarGz := makeTarGz(t, []entry{{name: "tool", body: "x", mode: 0o755}})
+	zipped := makeZip(t, []entry{{name: "tool", body: "x", mode: 0o755}})
+
+	raw := filepath.Join(t.TempDir(), "tool-linux-amd64")
+	if err := os.WriteFile(raw, []byte("\x7fELF not an archive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{tarGz, true},
+		{zipped, true},
+		{raw, false},
+	}
+	for _, tt := range tests {
+		got, err := IsArchive(tt.path)
+		if err != nil {
+			t.Fatalf("IsArchive(%s): %v", tt.path, err)
+		}
+		if got != tt.want {
+			t.Errorf("IsArchive(%s) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
+
 func TestFindBinaryPrefersRepoName(t *testing.T) {
 	dest := t.TempDir()
 	for _, name := range []string{"helper", "mytool", "other"} {

@@ -40,6 +40,20 @@ func Extract(src, destDir string) error {
 	}
 }
 
+// IsArchive reports whether src looks like a supported archive, based on its
+// content. Plain, uncompressed binaries return false with a nil error.
+func IsArchive(src string) (bool, error) {
+	kind, err := sniff(src)
+	if errors.Is(err, ErrUnsupportedFormat) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	return kind != kindUnknown, nil
+}
+
 type kind int
 
 const (

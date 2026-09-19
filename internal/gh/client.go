@@ -121,7 +121,7 @@ func (c *Client) Materialize(ctx context.Context, req registry.MaterializeReques
 		return "", err
 	}
 
-	return extractBinary(download.Name(), req.Repo, req.Dir)
+	return placeBinary(download.Name(), req.Repo, req.Dir)
 }
 
 // download streams an asset into dst, reporting progress to log.
@@ -209,24 +209,39 @@ func (c *Client) open(ctx context.Context, a registry.Asset) (io.ReadCloser, err
 	return resp.Body, nil
 }
 
-// extractBinary unpacks archivePath into a temp dir under destDir, finds the
-// tool binary and writes it to destDir/<repo>. It returns the final path.
-func extractBinary(archivePath, repo, destDir string) (string, error) {
-	tmpDir, err := os.MkdirTemp(destDir, ".oir-extract-*")
+// placeBinary writes the downloaded artifact into destDir/<repo> and returns
+// the final path. Archives are unpacked and searched for the tool binary; raw
+// single-file binaries are copied as-is.
+func placeBinary(downloadPath, repo, destDir string) (string, error) {
+	src := downloadPath
+
+	isArchive, err := archive.IsArchive(downloadPath)
 	if err != nil {
 		return "", err
 	}
-	defer os.RemoveAll(tmpDir)
+	if isArchive {
+		tmpDir, err := os.MkdirTemp(destDir, ".oir-extract-*")
+		if err != nil {
+			return "", err
+		}
+		defer os.RemoveAll(tmpDir)
 
-	if err := archive.Extract(archivePath, tmpDir); err != nil {
-		return "", err
+		if err := archive.Extract(downloadPath, tmpDir); err != nil {
+			return "", err
+		}
+
+		src, err = archive.FindBinary(tmpDir, repo)
+		if err != nil {
+			return "", err
+		}
 	}
 
-	bin, err := archive.FindBinary(tmpDir, repo)
-	if err != nil {
-		return "", err
-	}
+	return copyBinary(src, repo, destDir)
+}
 
+// copyBinary copies the tool binary at src to destDir/<repo>, making it
+// executable. It returns the final path.
+func copyBinary(src, repo, destDir string) (string, error) {
 	tmp, err := os.CreateTemp(destDir, ".oir-binary-*")
 	if err != nil {
 		return "", err
@@ -238,13 +253,13 @@ func extractBinary(archivePath, repo, destDir string) (string, error) {
 		}
 	}()
 
-	src, err := os.Open(bin)
+	in, err := os.Open(src)
 	if err != nil {
 		return "", err
 	}
-	defer src.Close()
+	defer in.Close()
 
-	if _, err := io.Copy(tmp, src); err != nil {
+	if _, err := io.Copy(tmp, in); err != nil {
 		return "", err
 	}
 	if err := tmp.Chmod(0o755); err != nil {
