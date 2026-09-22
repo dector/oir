@@ -220,6 +220,49 @@ func (s *Store) Remove(key, version string) error {
 	return os.RemoveAll(s.Dir(key, version))
 }
 
+// ClearExcept removes everything in a version directory except the given
+// slash-separated path and the metadata file. Directories on the way to keep
+// are retained, so a nested binary survives. It is used to drop package files
+// when a tool switches to binary-only mode.
+func (s *Store) ClearExcept(key, version, keep string) error {
+	keep = filepath.Clean(filepath.FromSlash(keep))
+	if keep == "." || keep == ".." {
+		return fmt.Errorf("invalid path to keep: %q", keep)
+	}
+
+	return clearExcept(s.Dir(key, version), keep)
+}
+
+func clearExcept(dir, keep string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+
+	head, rest, hasRest := strings.Cut(keep, string(filepath.Separator))
+	for _, e := range entries {
+		if e.Name() == metaFile {
+			continue
+		}
+		if e.Name() != head {
+			if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+				return err
+			}
+			continue
+		}
+		if !hasRest {
+			continue
+		}
+		if e.IsDir() {
+			if err := clearExcept(filepath.Join(dir, e.Name()), rest); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // SanitizeVersion makes a git tag safe to use as a directory name.
 func SanitizeVersion(v string) string {
 	v = strings.TrimSpace(v)

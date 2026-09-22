@@ -472,3 +472,78 @@ func TestRunFullUpgradesSingleInstall(t *testing.T) {
 		t.Errorf("theme not kept after --full: %v", err)
 	}
 }
+
+func TestRunOnlyBinaryKeepsThenClearsPackage(t *testing.T) {
+	archive := makePackageArchive(t, "binary", `{"theme":"dark"}`)
+	f := &fakeGitHub{archive: archive, digest: "sha256:" + sha256Of(archive)}
+
+	dataDir, binDir := t.TempDir(), t.TempDir()
+	sp := spec.Spec{Backend: spec.BackendGitHub, Owner: "o", Repo: "tool"}
+
+	in := newInstaller(t, f, dataDir, binDir)
+	in.Full = true
+	if _, err := in.Run(context.Background(), sp); err != nil {
+		t.Fatalf("full Run: %v", err)
+	}
+
+	versionDir := filepath.Join(dataDir, "installs", "github", "o", "tool", "latest")
+	theme := filepath.Join(versionDir, "theme", "dark.json")
+
+	// --only-binary flips the mode without touching files or downloading.
+	in.Full = false
+	in.OnlyBinary = true
+	res, err := in.Run(context.Background(), sp)
+	if err != nil {
+		t.Fatalf("--only-binary Run: %v", err)
+	}
+	if !res.UpToDate {
+		t.Error("--only-binary Run UpToDate = false, want true")
+	}
+	if _, err := os.Stat(theme); err != nil {
+		t.Errorf("package files removed without --clear: %v", err)
+	}
+	if got := f.downloads.Load(); got != 1 {
+		t.Errorf("downloads = %d, want 1 (mode switch must not reinstall)", got)
+	}
+	meta, _, _ := in.Store.ReadMeta("github/o/tool", "latest")
+	if meta.Full || meta.Binary != "tool" {
+		t.Errorf("meta = %+v, want binary mode with Binary tool", meta)
+	}
+
+	// A plain run keeps binary mode and leaves the package files alone.
+	in.OnlyBinary = false
+	if _, err := in.Run(context.Background(), sp); err != nil {
+		t.Fatalf("plain Run: %v", err)
+	}
+	if _, err := os.Stat(theme); err != nil {
+		t.Errorf("package files removed by a plain run: %v", err)
+	}
+
+	// --only-binary --clear removes the package files, keeping the binary.
+	in.OnlyBinary = true
+	in.Clear = true
+	if _, err := in.Run(context.Background(), sp); err != nil {
+		t.Fatalf("--only-binary --clear Run: %v", err)
+	}
+	if _, err := os.Stat(theme); err == nil {
+		t.Error("package files still present after --clear")
+	}
+	if _, err := os.Stat(filepath.Join(versionDir, "tool")); err != nil {
+		t.Errorf("binary missing after --clear: %v", err)
+	}
+	if got := f.downloads.Load(); got != 1 {
+		t.Errorf("downloads = %d, want 1 (--clear must not reinstall)", got)
+	}
+}
+
+func TestRunRejectsFullAndOnlyBinary(t *testing.T) {
+	dataDir, binDir := t.TempDir(), t.TempDir()
+	in := newInstaller(t, &fakeGitHub{}, dataDir, binDir)
+	in.Full = true
+	in.OnlyBinary = true
+
+	sp := spec.Spec{Backend: spec.BackendGitHub, Owner: "o", Repo: "tool"}
+	if _, err := in.Run(context.Background(), sp); err == nil {
+		t.Fatal("expected an error for --full with --only-binary")
+	}
+}

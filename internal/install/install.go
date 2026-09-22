@@ -32,6 +32,10 @@ type Options struct {
 	NoVerify bool
 	// Full keeps the whole release archive instead of only the binary.
 	Full bool
+	// OnlyBinary switches an existing package install back to binary-only mode.
+	OnlyBinary bool
+	// Clear removes the package files when switching to binary-only mode.
+	Clear bool
 	// Force replaces links oir already owns.
 	Force  bool
 	Stdout io.Writer
@@ -40,15 +44,17 @@ type Options struct {
 
 // Installer performs installs with a fixed configuration.
 type Installer struct {
-	Backends registry.Backends
-	Store    *store.Store
-	BinDir   string
-	Platform registry.Platform
-	NoVerify bool
-	Full     bool
-	Force    bool
-	Stdout   io.Writer
-	Stderr   io.Writer
+	Backends   registry.Backends
+	Store      *store.Store
+	BinDir     string
+	Platform   registry.Platform
+	NoVerify   bool
+	Full       bool
+	OnlyBinary bool
+	Clear      bool
+	Force      bool
+	Stdout     io.Writer
+	Stderr     io.Writer
 }
 
 // New builds an Installer from options.
@@ -62,15 +68,17 @@ func New(opts Options) *Installer {
 	}
 
 	return &Installer{
-		Backends: opts.Backends,
-		Store:    &store.Store{Root: opts.StoreDir},
-		BinDir:   opts.BinDir,
-		Platform: opts.Platform,
-		NoVerify: opts.NoVerify,
-		Full:     opts.Full,
-		Force:    opts.Force,
-		Stdout:   stdout,
-		Stderr:   stderr,
+		Backends:   opts.Backends,
+		Store:      &store.Store{Root: opts.StoreDir},
+		BinDir:     opts.BinDir,
+		Platform:   opts.Platform,
+		NoVerify:   opts.NoVerify,
+		Full:       opts.Full,
+		OnlyBinary: opts.OnlyBinary,
+		Clear:      opts.Clear,
+		Force:      opts.Force,
+		Stdout:     stdout,
+		Stderr:     stderr,
 	}
 }
 
@@ -91,6 +99,10 @@ type Result struct {
 // installer assigns. The installer then adopts that folder atomically into the
 // store, records metadata, and links the binary into BinDir.
 func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
+	if in.Full && in.OnlyBinary {
+		return nil, fmt.Errorf("--full and --only-binary are mutually exclusive")
+	}
+
 	backend, err := in.Backends.Get(string(sp.Backend))
 	if err != nil {
 		return nil, err
@@ -122,9 +134,23 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 	// A corrupt metadata file reads as absent, so the install self-heals by
 	// reinstalling and overwriting it.
 	meta, hasMeta, _ := in.Store.ReadMeta(key, version)
+
 	// --full is sticky: once a tool was recorded as a full package, later
 	// installs and `update` keep the package layout without the flag.
-	full := in.Full || (hasMeta && meta.Full)
+	// --only-binary clears that choice and takes precedence.
+	full := hasMeta && meta.Full
+	switch {
+	case in.OnlyBinary:
+		full = false
+	case in.Full:
+		full = true
+	}
+
+	// Switching an existing install back to binary-only must not touch the
+	// files unless --clear is given, so it skips the reinstall path entirely.
+	if in.OnlyBinary && in.Store.Has(key, version) {
+		return in.switchToBinary(key, version, name, meta, hasMeta, res)
+	}
 
 	if in.Store.Has(key, version) && !in.Force {
 		if hasMeta && !assetChanged(meta, asset) && meta.Binary != "" && meta.Full == full {
@@ -207,6 +233,46 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 		return nil, err
 	}
 	res.Changed = changed
+
+	return res, nil
+}
+
+// switchToBinary records binary-only mode for an existing install. The package
+// files are left untouched unless clear is set, in which case everything except
+// the binary and its metadata is removed. It never downloads anything.
+func (in *Installer) switchToBinary(key, version, name string, meta store.Meta, hasMeta bool, res *Result) (*Result, error) {
+	dir := in.Store.Dir(key, version)
+
+	binRel := name
+	if hasMeta && meta.Binary != "" {
+		binRel = meta.Binary
+	}
+	binPath := filepath.Join(dir, filepath.FromSlash(binRel))
+
+	if in.Clear {
+		if err := in.Store.ClearExcept(key, version, binRel); err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(in.Stdout, "%s %s %s, package files removed\n",
+			style.Muted("cleared"), style.Name(res.Spec.String()), version)
+	} else {
+		fmt.Fprintf(in.Stdout, "%s %s %s, switched to binary mode\n",
+			style.Muted("kept"), style.Name(res.Spec.String()), version)
+	}
+
+	meta.Binary = binRel
+	meta.Full = false
+	if err := in.Store.WriteMeta(key, version, meta); err != nil {
+		fmt.Fprintf(in.Stderr, "%s record install metadata: %v\n", style.Warn("warning:"), err)
+	}
+
+	res.Binary = binPath
+	changed, err := in.linkBinary(name, res)
+	if err != nil {
+		return nil, err
+	}
+	res.Changed = changed
+	res.UpToDate = true
 
 	return res, nil
 }

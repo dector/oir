@@ -36,6 +36,14 @@ func newInstallCommand() *cli.Command {
 				Name:  "full",
 				Usage: "Keep the whole release archive, not just the binary",
 			},
+			&cli.BoolFlag{
+				Name:  "only-binary",
+				Usage: "Switch an existing install back to binary-only mode",
+			},
+			&cli.BoolFlag{
+				Name:  "clear",
+				Usage: "With --only-binary, remove the package files instead of keeping them",
+			},
 			&cli.StringFlag{
 				Name:  "bin",
 				Usage: "Directory to symlink the binary into",
@@ -53,6 +61,12 @@ func runInstall(ctx context.Context, cmd *cli.Command) error {
 	}
 	if len(args) > 1 {
 		return fmt.Errorf("expected a single tool spec, got %d arguments", len(args))
+	}
+	if cmd.Bool("full") && cmd.Bool("only-binary") {
+		return fmt.Errorf("--full and --only-binary are mutually exclusive")
+	}
+	if cmd.Bool("clear") && !cmd.Bool("only-binary") {
+		return fmt.Errorf("--clear requires --only-binary")
 	}
 
 	sp, err := alias.Resolve(args[0])
@@ -104,15 +118,17 @@ func newInstaller(cmd *cli.Command) (*install.Installer, error) {
 	}
 
 	return install.New(install.Options{
-		Backends: newBackends(),
-		StoreDir: storeDir,
-		BinDir:   cmd.String("bin"),
-		Platform: registry.CurrentPlatform(),
-		NoVerify: cmd.Bool("no-verify"),
-		Full:     cmd.Bool("full"),
-		Force:    cmd.Bool("force"),
-		Stdout:   cmd.Writer,
-		Stderr:   cmd.ErrWriter,
+		Backends:   newBackends(),
+		StoreDir:   storeDir,
+		BinDir:     cmd.String("bin"),
+		Platform:   registry.CurrentPlatform(),
+		NoVerify:   cmd.Bool("no-verify"),
+		Full:       cmd.Bool("full"),
+		OnlyBinary: cmd.Bool("only-binary"),
+		Clear:      cmd.Bool("clear"),
+		Force:      cmd.Bool("force"),
+		Stdout:     cmd.Writer,
+		Stderr:     cmd.ErrWriter,
 	}), nil
 }
 

@@ -229,3 +229,63 @@ func TestListFindsPackageInstalls(t *testing.T) {
 		t.Errorf("List[0] = %+v, want %+v", got[0], want[0])
 	}
 }
+
+func writeFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClearExceptKeepsBinaryAndMeta(t *testing.T) {
+	s := &Store{Root: t.TempDir()}
+	key, version := "github/o/pi", "v1"
+	dir := s.Dir(key, version)
+
+	writeFile(t, filepath.Join(dir, "pi"), "bin")
+	writeFile(t, filepath.Join(dir, "theme", "dark.json"), "{}")
+	if err := s.WriteMeta(key, version, Meta{Binary: "pi", Full: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.ClearExcept(key, version, "pi"); err != nil {
+		t.Fatalf("ClearExcept: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "pi")); err != nil {
+		t.Errorf("binary removed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "theme")); err == nil {
+		t.Error("theme kept")
+	}
+	if _, ok, _ := s.ReadMeta(key, version); !ok {
+		t.Error("metadata removed")
+	}
+}
+
+func TestClearExceptKeepsNestedBinary(t *testing.T) {
+	s := &Store{Root: t.TempDir()}
+	key, version := "github/o/tool", "v1"
+	dir := s.Dir(key, version)
+
+	writeFile(t, filepath.Join(dir, "bin", "tool"), "bin")
+	writeFile(t, filepath.Join(dir, "bin", "helper"), "extra")
+	writeFile(t, filepath.Join(dir, "docs", "readme.md"), "docs")
+
+	if err := s.ClearExcept(key, version, "bin/tool"); err != nil {
+		t.Fatalf("ClearExcept: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "bin", "tool")); err != nil {
+		t.Errorf("nested binary removed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "bin", "helper")); err == nil {
+		t.Error("sibling of the nested binary kept")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "docs")); err == nil {
+		t.Error("docs kept")
+	}
+}
