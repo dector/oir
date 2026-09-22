@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/dector/oir/internal/link"
 	"github.com/dector/oir/internal/registry"
@@ -29,6 +30,8 @@ type Options struct {
 	Platform registry.Platform
 	// NoVerify skips checksum verification (unsafe).
 	NoVerify bool
+	// Full keeps the whole release archive instead of only the binary.
+	Full bool
 	// Force replaces links oir already owns.
 	Force  bool
 	Stdout io.Writer
@@ -42,6 +45,7 @@ type Installer struct {
 	BinDir   string
 	Platform registry.Platform
 	NoVerify bool
+	Full     bool
 	Force    bool
 	Stdout   io.Writer
 	Stderr   io.Writer
@@ -63,6 +67,7 @@ func New(opts Options) *Installer {
 		BinDir:   opts.BinDir,
 		Platform: opts.Platform,
 		NoVerify: opts.NoVerify,
+		Full:     opts.Full,
 		Force:    opts.Force,
 		Stdout:   stdout,
 		Stderr:   stderr,
@@ -99,9 +104,14 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 	version := rel.Tag
 	key := sp.Key()
 	name := sp.Repo
-	binaryPath := in.Store.BinaryPath(key, version, name)
+	dir := in.Store.Dir(key, version)
 
-	res := &Result{Spec: sp, Version: version, Binary: binaryPath, Link: filepath.Join(in.BinDir, name)}
+	res := &Result{
+		Spec:    sp,
+		Version: version,
+		Binary:  in.Store.BinaryPath(key, version, name),
+		Link:    filepath.Join(in.BinDir, name),
+	}
 
 	asset, err := registry.Pick(rel.Assets, sp.Repo, in.Platform)
 	if err != nil {
@@ -109,10 +119,17 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 	}
 	res.Asset = asset.Name
 
+	// A corrupt metadata file reads as absent, so the install self-heals by
+	// reinstalling and overwriting it.
+	meta, hasMeta, _ := in.Store.ReadMeta(key, version)
+	// --full is sticky: once a tool was recorded as a full package, later
+	// installs and `update` keep the package layout without the flag.
+	full := in.Full || (hasMeta && meta.Full)
+
 	if in.Store.Has(key, version) && !in.Force {
-		meta, ok, _ := in.Store.ReadMeta(key, version)
-		if ok && !assetChanged(meta, asset) {
+		if hasMeta && !assetChanged(meta, asset) && meta.Binary != "" && meta.Full == full {
 			fmt.Fprintf(in.Stdout, "%s %s %s, already installed\n", style.Muted("skipping"), style.Name(sp.String()), version)
+			res.Binary = filepath.Join(dir, filepath.FromSlash(meta.Binary))
 			changed, err := in.linkBinary(name, res)
 			if err != nil {
 				return nil, err
@@ -122,11 +139,20 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 
 			return res, nil
 		}
-		if ok {
-			fmt.Fprintf(in.Stderr, "%s %s %s changed (%s -> %s), reinstalling\n",
-				style.Warn("warn:"), style.Name(sp.String()), version, meta.Asset, asset.Name)
+		if hasMeta {
+			switch {
+			case assetChanged(meta, asset):
+				fmt.Fprintf(in.Stderr, "%s %s %s changed (%s -> %s), reinstalling\n",
+					style.Warn("warn:"), style.Name(sp.String()), version, meta.Asset, asset.Name)
+			case meta.Binary == "":
+				fmt.Fprintf(in.Stderr, "%s %s %s installed by an older oir, reinstalling\n",
+					style.Warn("warn:"), style.Name(sp.String()), version)
+			default:
+				fmt.Fprintf(in.Stderr, "%s %s %s switching to the full package layout, reinstalling\n",
+					style.Warn("warn:"), style.Name(sp.String()), version)
+			}
 		}
-		// No metadata, or the asset changed: reinstall to record (or refresh)
+		// No metadata, or the layout changed: reinstall to record (or refresh)
 		// the install. This also backfills metadata for pre-existing installs.
 	}
 
@@ -145,6 +171,7 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 		Asset:    asset,
 		Dir:      staging,
 		Repo:     name,
+		Full:     full,
 		NoVerify: in.NoVerify,
 		Log:      in.Stderr,
 	})
@@ -152,17 +179,25 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 		return nil, err
 	}
 
+	relPath, err := filepath.Rel(staging, binPath)
+	if err != nil || relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+		return nil, fmt.Errorf("binary %s is outside the install dir", binPath)
+	}
+	relPath = filepath.ToSlash(relPath)
+
 	if err := in.Store.Adopt(key, version, staging); err != nil {
 		return nil, err
 	}
 	staging = "" // ownership has moved into the store
 
-	res.Binary = filepath.Join(in.Store.Dir(key, version), filepath.Base(binPath))
+	res.Binary = filepath.Join(dir, filepath.FromSlash(relPath))
 
 	if err := in.Store.WriteMeta(key, version, store.Meta{
 		Asset:   asset.Name,
 		Digest:  asset.Digest,
 		AssetID: asset.ID,
+		Binary:  relPath,
+		Full:    full,
 	}); err != nil {
 		fmt.Fprintf(in.Stderr, "%s record install metadata: %v\n", style.Warn("warning:"), err)
 	}

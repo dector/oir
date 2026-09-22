@@ -203,3 +203,43 @@ func TestFindBinaryNoCandidates(t *testing.T) {
 		t.Fatal("expected error when only docs are present")
 	}
 }
+
+func TestExtractPackageCollapsesSingleRoot(t *testing.T) {
+	src := makeTarGz(t, []entry{
+		{name: "pi/pi", body: "bin", mode: 0o755},
+		{name: "pi/theme/dark.json", body: "{}", mode: 0o644},
+	})
+
+	dest := t.TempDir()
+	if err := ExtractPackage(src, dest); err != nil {
+		t.Fatalf("ExtractPackage: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dest, "pi")); err != nil {
+		t.Errorf("binary not at the package root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "theme", "dark.json")); err != nil {
+		t.Errorf("sibling file not kept: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "pi", "theme")); err == nil {
+		t.Error("top-level wrapper directory was not collapsed")
+	}
+}
+
+func TestExtractPackageKeepsFlatLayout(t *testing.T) {
+	src := makeTarGz(t, []entry{
+		{name: "tool", body: "bin", mode: 0o755},
+		{name: "README.md", body: "docs", mode: 0o644},
+	})
+
+	dest := t.TempDir()
+	if err := ExtractPackage(src, dest); err != nil {
+		t.Fatalf("ExtractPackage: %v", err)
+	}
+
+	for _, name := range []string{"tool", "README.md"} {
+		if _, err := os.Stat(filepath.Join(dest, name)); err != nil {
+			t.Errorf("%s missing: %v", name, err)
+		}
+	}
+}

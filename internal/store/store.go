@@ -128,8 +128,9 @@ func (s *Store) List() ([]Installed, error) {
 	return out, nil
 }
 
-// versionDir reports whether path directly holds installed files: no
-// subdirectories, and at least one non-hidden regular file.
+// versionDir reports whether path directly holds an installed version: it
+// contains the metadata file written by WriteMeta, or, for installs made
+// before metadata was recorded, it holds regular files but no subdirectories.
 func versionDir(path string) (isVersion, hasFile bool, err error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {
@@ -138,10 +139,14 @@ func versionDir(path string) (isVersion, hasFile bool, err error) {
 
 	isVersion = true
 	for _, e := range entries {
-		if e.IsDir() {
-			return false, false, nil
+		if e.Name() == metaFile {
+			// A package install keeps subdirectories next to the binary, so the
+			// metadata file is the reliable marker.
+			return true, true, nil
 		}
-		if !strings.HasPrefix(e.Name(), ".") {
+		if e.IsDir() {
+			isVersion = false
+		} else if !strings.HasPrefix(e.Name(), ".") {
 			hasFile = true
 		}
 	}

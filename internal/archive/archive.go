@@ -54,6 +54,72 @@ func IsArchive(src string) (bool, error) {
 	return kind != kindUnknown, nil
 }
 
+// ExtractPackage unpacks src into destDir, collapsing a single top-level
+// directory so the package contents land directly in destDir. This keeps tools
+// that ship runtime files next to their binary intact, like releases that wrap
+// everything in a "<repo>/" folder.
+func ExtractPackage(src, destDir string) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return err
+	}
+
+	tmp, err := os.MkdirTemp(destDir, ".oir-extract-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+
+	if err := Extract(src, tmp); err != nil {
+		return err
+	}
+
+	root, err := packageRoot(tmp)
+	if err != nil {
+		return err
+	}
+
+	return moveContents(root, destDir)
+}
+
+// packageRoot returns the effective package root inside an extracted archive:
+// the sole top-level directory when there is exactly one, otherwise dir itself.
+func packageRoot(dir string) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+
+	var visible []os.DirEntry
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		visible = append(visible, e)
+	}
+
+	if len(visible) == 1 && visible[0].IsDir() {
+		return filepath.Join(dir, visible[0].Name()), nil
+	}
+
+	return dir, nil
+}
+
+// moveContents moves every entry directly inside src into dst.
+func moveContents(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	for _, e := range entries {
+		if err := os.Rename(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 type kind int
 
 const (

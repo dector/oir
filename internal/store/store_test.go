@@ -195,3 +195,37 @@ func TestMetaRoundTrip(t *testing.T) {
 		t.Errorf("ReadMeta = %+v, want %+v", got, want)
 	}
 }
+
+func TestListFindsPackageInstalls(t *testing.T) {
+	s := &Store{Root: t.TempDir()}
+	key, version := "github/o/pi", "v1.0.0"
+
+	dir := s.Dir(key, version)
+	if err := os.MkdirAll(filepath.Join(dir, "theme"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pi"), []byte("bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "theme", "dark.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	meta := Meta{Asset: "pi-linux-x64.tar.gz", Binary: "pi", Full: true}
+	if err := s.WriteMeta(key, version, meta); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	want := []Installed{{Key: key, Version: version, Meta: meta}}
+	if len(got) != len(want) {
+		t.Fatalf("List = %+v, want %+v", got, want)
+	}
+	if got[0] != want[0] {
+		t.Errorf("List[0] = %+v, want %+v", got[0], want[0])
+	}
+}

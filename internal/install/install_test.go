@@ -55,6 +55,46 @@ func makeArchive(t *testing.T, content string) []byte {
 	return buf.Bytes()
 }
 
+// makePackageArchive builds a .tar.gz that wraps a binary and sibling runtime
+// files in a single top-level directory, like most release tarballs.
+func makePackageArchive(t *testing.T, content, theme string) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+
+	entries := []struct {
+		name string
+		body string
+		mode int64
+	}{
+		{"tool/tool", content, 0o755},
+		{"tool/theme/dark.json", theme, 0o644},
+	}
+	for _, e := range entries {
+		if err := tw.WriteHeader(&tar.Header{
+			Name:     e.name,
+			Mode:     e.mode,
+			Size:     int64(len(e.body)),
+			Typeflag: tar.TypeReg,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(e.body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	return buf.Bytes()
+}
+
 func sha256Of(b []byte) string {
 	sum := sha256.Sum256(b)
 
@@ -350,5 +390,85 @@ func TestRunUsesRequestedVersion(t *testing.T) {
 	want := filepath.Join(dataDir, "installs", "github", "o", "tool", "v1.2.3", "tool")
 	if res.Binary != want {
 		t.Errorf("binary = %q, want %q", res.Binary, want)
+	}
+}
+
+func TestRunFullKeepsPackageAndIsSticky(t *testing.T) {
+	archive := makePackageArchive(t, "#!/bin/sh\necho hello\n", `{"theme":"dark"}`)
+	f := &fakeGitHub{archive: archive, digest: "sha256:" + sha256Of(archive)}
+
+	dataDir, binDir := t.TempDir(), t.TempDir()
+	in := newInstaller(t, f, dataDir, binDir)
+	in.Full = true
+
+	sp := spec.Spec{Backend: spec.BackendGitHub, Owner: "o", Repo: "tool"}
+	res, err := in.Run(context.Background(), sp)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	versionDir := filepath.Join(dataDir, "installs", "github", "o", "tool", "latest")
+	if res.Binary != filepath.Join(versionDir, "tool") {
+		t.Errorf("binary = %q, want %q", res.Binary, filepath.Join(versionDir, "tool"))
+	}
+	theme := filepath.Join(versionDir, "theme", "dark.json")
+	if _, err := os.Stat(theme); err != nil {
+		t.Fatalf("theme not kept: %v", err)
+	}
+
+	meta, ok, err := in.Store.ReadMeta("github/o/tool", "latest")
+	if err != nil || !ok {
+		t.Fatalf("ReadMeta = (%v, %v), want ok", ok, err)
+	}
+	if !meta.Full || meta.Binary != "tool" {
+		t.Errorf("meta = %+v, want Full with Binary tool", meta)
+	}
+
+	// A later run without --full keeps the package layout: --full is sticky.
+	in.Full = false
+	res2, err := in.Run(context.Background(), sp)
+	if err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+	if !res2.UpToDate {
+		t.Error("second Run UpToDate = false, want true")
+	}
+	if got := f.downloads.Load(); got != 1 {
+		t.Errorf("downloads = %d, want 1 (sticky --full must not reinstall)", got)
+	}
+	if _, err := os.Stat(theme); err != nil {
+		t.Errorf("theme removed by the second run: %v", err)
+	}
+}
+
+func TestRunFullUpgradesSingleInstall(t *testing.T) {
+	archive := makePackageArchive(t, "binary", `{"theme":"dark"}`)
+	f := &fakeGitHub{archive: archive, digest: "sha256:" + sha256Of(archive)}
+
+	dataDir, binDir := t.TempDir(), t.TempDir()
+	sp := spec.Spec{Backend: spec.BackendGitHub, Owner: "o", Repo: "tool"}
+
+	in1 := newInstaller(t, f, dataDir, binDir)
+	if _, err := in1.Run(context.Background(), sp); err != nil {
+		t.Fatalf("single Run: %v", err)
+	}
+
+	versionDir := filepath.Join(dataDir, "installs", "github", "o", "tool", "latest")
+	theme := filepath.Join(versionDir, "theme", "dark.json")
+	if _, err := os.Stat(theme); err == nil {
+		t.Fatal("theme present after a single-binary install")
+	}
+
+	in2 := newInstaller(t, f, dataDir, binDir)
+	in2.Full = true
+	res, err := in2.Run(context.Background(), sp)
+	if err != nil {
+		t.Fatalf("full Run: %v", err)
+	}
+	if res.UpToDate {
+		t.Error("full Run UpToDate = true, want a reinstall to the package layout")
+	}
+	if _, err := os.Stat(theme); err != nil {
+		t.Errorf("theme not kept after --full: %v", err)
 	}
 }

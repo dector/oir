@@ -93,7 +93,8 @@ func (c *Client) Resolve(ctx context.Context, owner, repo, version string) (*reg
 }
 
 // Materialize implements registry.Backend. It downloads req.Asset, verifies
-// its checksum and writes the extracted binary into req.Dir.
+// its checksum and writes the tool into req.Dir, keeping the whole package
+// when req.Full is set.
 func (c *Client) Materialize(ctx context.Context, req registry.MaterializeRequest) (string, error) {
 	log := req.Log
 	if log == nil {
@@ -122,7 +123,7 @@ func (c *Client) Materialize(ctx context.Context, req registry.MaterializeReques
 		return "", err
 	}
 
-	return placeBinary(download.Name(), req.Repo, req.Dir)
+	return placeArtifact(download.Name(), req.Repo, req.Dir, req.Full)
 }
 
 // download streams an asset into dst, reporting progress to log.
@@ -210,31 +211,40 @@ func (c *Client) open(ctx context.Context, a registry.Asset) (io.ReadCloser, err
 	return resp.Body, nil
 }
 
-// placeBinary writes the downloaded artifact into destDir/<repo> and returns
-// the final path. Archives are unpacked and searched for the tool binary; raw
-// single-file binaries are copied as-is.
-func placeBinary(downloadPath, repo, destDir string) (string, error) {
-	src := downloadPath
-
+// placeArtifact writes the downloaded artifact into destDir and returns the
+// path of the tool binary. Raw single-file binaries are copied as-is. Archives
+// are unpacked: with full set the whole package is kept next to the binary,
+// otherwise only the binary itself is copied out.
+func placeArtifact(downloadPath, repo, destDir string, full bool) (string, error) {
 	isArchive, err := archive.IsArchive(downloadPath)
 	if err != nil {
 		return "", err
 	}
-	if isArchive {
-		tmpDir, err := os.MkdirTemp(destDir, ".oir-extract-*")
-		if err != nil {
-			return "", err
-		}
-		defer os.RemoveAll(tmpDir)
+	if !isArchive {
+		return copyBinary(downloadPath, repo, destDir)
+	}
 
-		if err := archive.Extract(downloadPath, tmpDir); err != nil {
+	if full {
+		if err := archive.ExtractPackage(downloadPath, destDir); err != nil {
 			return "", err
 		}
 
-		src, err = archive.FindBinary(tmpDir, repo)
-		if err != nil {
-			return "", err
-		}
+		return archive.FindBinary(destDir, repo)
+	}
+
+	tmpDir, err := os.MkdirTemp(destDir, ".oir-extract-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	if err := archive.Extract(downloadPath, tmpDir); err != nil {
+		return "", err
+	}
+
+	src, err := archive.FindBinary(tmpDir, repo)
+	if err != nil {
+		return "", err
 	}
 
 	return copyBinary(src, repo, destDir)

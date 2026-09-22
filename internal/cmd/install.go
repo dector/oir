@@ -32,6 +32,10 @@ func newInstallCommand() *cli.Command {
 				Name:  "no-verify",
 				Usage: "Skip checksum verification (unsafe)",
 			},
+			&cli.BoolFlag{
+				Name:  "full",
+				Usage: "Keep the whole release archive, not just the binary",
+			},
 			&cli.StringFlag{
 				Name:  "bin",
 				Usage: "Directory to symlink the binary into",
@@ -105,6 +109,7 @@ func newInstaller(cmd *cli.Command) (*install.Installer, error) {
 		BinDir:   cmd.String("bin"),
 		Platform: registry.CurrentPlatform(),
 		NoVerify: cmd.Bool("no-verify"),
+		Full:     cmd.Bool("full"),
 		Force:    cmd.Bool("force"),
 		Stdout:   cmd.Writer,
 		Stderr:   cmd.ErrWriter,

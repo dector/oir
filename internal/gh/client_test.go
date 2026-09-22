@@ -16,9 +16,9 @@ func TestPlaceBinaryRaw(t *testing.T) {
 	}
 
 	dest := t.TempDir()
-	got, err := placeBinary(download, "tool", dest)
+	got, err := placeArtifact(download, "tool", dest, false)
 	if err != nil {
-		t.Fatalf("placeBinary: %v", err)
+		t.Fatalf("placeArtifact: %v", err)
 	}
 	if got != filepath.Join(dest, "tool") {
 		t.Fatalf("got %q, want %q", got, filepath.Join(dest, "tool"))
@@ -70,9 +70,9 @@ func TestPlaceBinaryArchive(t *testing.T) {
 	}
 
 	dest := t.TempDir()
-	got, err := placeBinary(download, "tool", dest)
+	got, err := placeArtifact(download, "tool", dest, false)
 	if err != nil {
-		t.Fatalf("placeBinary: %v", err)
+		t.Fatalf("placeArtifact: %v", err)
 	}
 
 	data, err := os.ReadFile(got)
@@ -81,5 +81,61 @@ func TestPlaceBinaryArchive(t *testing.T) {
 	}
 	if string(data) != string(body) {
 		t.Fatalf("binary content = %q, want %q", data, body)
+	}
+}
+
+func TestPlaceArtifactFull(t *testing.T) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+
+	entries := []struct {
+		name string
+		body string
+		mode int64
+	}{
+		{"pi/pi", "#!/bin/sh\necho pi\n", 0o755},
+		{"pi/theme/dark.json", `{"name":"dark"}`, 0o644},
+		{"pi/package.json", `{"version":"1.0.0"}`, 0o644},
+	}
+	for _, e := range entries {
+		if err := tw.WriteHeader(&tar.Header{
+			Name:     e.name,
+			Mode:     e.mode,
+			Size:     int64(len(e.body)),
+			Typeflag: tar.TypeReg,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(e.body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	download := filepath.Join(t.TempDir(), "pi-linux-x64.tar.gz")
+	if err := os.WriteFile(download, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dest := t.TempDir()
+	got, err := placeArtifact(download, "pi", dest, true)
+	if err != nil {
+		t.Fatalf("placeArtifact: %v", err)
+	}
+	if got != filepath.Join(dest, "pi") {
+		t.Fatalf("binary = %q, want %q", got, filepath.Join(dest, "pi"))
+	}
+
+	// The single top-level directory is collapsed and every sibling file is kept.
+	for _, rel := range []string{"theme/dark.json", "package.json"} {
+		if _, err := os.Stat(filepath.Join(dest, rel)); err != nil {
+			t.Errorf("%s not kept: %v", rel, err)
+		}
 	}
 }

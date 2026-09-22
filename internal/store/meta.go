@@ -16,6 +16,12 @@ type Meta struct {
 	Asset   string `json:"asset,omitempty"`
 	Digest  string `json:"digest,omitempty"`
 	AssetID int64  `json:"asset_id,omitempty"`
+	// Binary is the slash-separated path of the linked binary inside the
+	// version directory. Empty for installs made before this was recorded.
+	Binary string `json:"binary,omitempty"`
+	// Full records that the whole release archive was kept, so later installs
+	// and updates preserve the package layout without --full.
+	Full bool `json:"full,omitempty"`
 }
 
 // ReadMeta returns the metadata recorded for a version. ok is false when no

@@ -47,6 +47,7 @@ type MaterializeRequest struct {
 	Asset    Asset     // asset to download
 	Dir      string    // staging folder assigned by the caller
 	Repo     string    // repository name, used to locate and name the binary
+	Full     bool      // keep the whole archive, not just the binary
 	NoVerify bool      // skip checksum verification
 	Log      io.Writer // optional status and progress output
 }
@@ -58,7 +59,9 @@ type Backend interface {
 	Resolve(ctx context.Context, owner, repo, version string) (*Release, error)
 
 	// Materialize downloads req.Asset, verifies it and writes the installed
-	// binary into req.Dir. It returns the absolute path of the placed binary.
+	// artifact into req.Dir. With req.Full it keeps the whole archive; otherwise
+	// it places only the tool binary. It returns the absolute path of the
+	// placed binary.
 	//
 	// req.Dir is a staging folder the caller assigns and will adopt
 	// atomically. The backend must not choose it or derive it from global
