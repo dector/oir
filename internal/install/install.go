@@ -30,9 +30,9 @@ type Options struct {
 	Platform registry.Platform
 	// NoVerify skips checksum verification (unsafe).
 	NoVerify bool
-	// Full keeps the whole release archive instead of only the binary.
+	// Full explicitly requests the default full-bundle mode.
 	Full bool
-	// OnlyBinary switches an existing package install back to binary-only mode.
+	// OnlyBinary installs just the executable instead of the default full bundle.
 	OnlyBinary bool
 	// Clear removes the package files when switching to binary-only mode.
 	Clear bool
@@ -100,7 +100,7 @@ type Result struct {
 // store, records metadata, and links the binary into BinDir.
 func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 	if in.Full && in.OnlyBinary {
-		return nil, fmt.Errorf("--full and --only-binary are mutually exclusive")
+		return nil, fmt.Errorf("--full and --exe-only are mutually exclusive")
 	}
 
 	backend, err := in.Backends.Get(string(sp.Backend))
@@ -135,16 +135,13 @@ func (in *Installer) Run(ctx context.Context, sp spec.Spec) (*Result, error) {
 	// reinstalling and overwriting it.
 	meta, hasMeta, _ := in.Store.ReadMeta(key, version)
 
-	// --full is sticky: once a tool was recorded as a full package, later
-	// installs and `update` keep the package layout without the flag.
-	// --only-binary clears that choice and takes precedence.
-	full := hasMeta && meta.Full
-	switch {
-	case in.OnlyBinary:
-		full = false
-	case in.Full:
-		full = true
+	// Keep the whole bundle unless executable-only mode was requested.
+	full := !in.OnlyBinary
+	mode := "full bundle"
+	if !full {
+		mode = "binary only"
 	}
+	fmt.Fprintf(in.Stdout, "install mode for %s: %s\n", style.Name(sp.String()), mode)
 
 	// Switching an existing install back to binary-only must not touch the
 	// files unless --clear is given, so it skips the reinstall path entirely.
@@ -256,7 +253,7 @@ func (in *Installer) switchToBinary(key, version, name string, meta store.Meta, 
 		fmt.Fprintf(in.Stdout, "%s %s %s, package files removed\n",
 			style.Muted("cleared"), style.Name(res.Spec.String()), version)
 	} else {
-		fmt.Fprintf(in.Stdout, "%s %s %s, switched to binary mode\n",
+		fmt.Fprintf(in.Stdout, "%s %s %s, binary-only mode (existing package files kept; use --clear to remove them)\n",
 			style.Muted("kept"), style.Name(res.Spec.String()), version)
 	}
 

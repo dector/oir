@@ -20,7 +20,7 @@ func newInstallCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "install",
 		Aliases:   []string{"i"},
-		Usage:     "Install a tool from a GitHub release",
+		Usage:     "Install a full release bundle (use --exe-only for just the binary)",
 		ArgsUsage: "gh:<owner>/<repo> | <alias>",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
@@ -34,15 +34,16 @@ func newInstallCommand() *cli.Command {
 			},
 			&cli.BoolFlag{
 				Name:  "full",
-				Usage: "Keep the whole release archive, not just the binary",
+				Usage: "Keep the whole release archive (the default)",
 			},
 			&cli.BoolFlag{
-				Name:  "only-binary",
-				Usage: "Switch an existing install back to binary-only mode",
+				Name:    "exe-only",
+				Aliases: []string{"only-binary"},
+				Usage:   "Install only the executable; existing package files are kept unless --clear is used",
 			},
 			&cli.BoolFlag{
 				Name:  "clear",
-				Usage: "With --only-binary, remove the package files instead of keeping them",
+				Usage: "With --exe-only, remove existing package files instead of keeping them",
 			},
 			&cli.StringFlag{
 				Name:  "bin",
@@ -62,11 +63,11 @@ func runInstall(ctx context.Context, cmd *cli.Command) error {
 	if len(args) > 1 {
 		return fmt.Errorf("expected a single tool spec, got %d arguments", len(args))
 	}
-	if cmd.Bool("full") && cmd.Bool("only-binary") {
-		return fmt.Errorf("--full and --only-binary are mutually exclusive")
+	if cmd.Bool("full") && cmd.Bool("exe-only") {
+		return fmt.Errorf("--full and --exe-only are mutually exclusive")
 	}
-	if cmd.Bool("clear") && !cmd.Bool("only-binary") {
-		return fmt.Errorf("--clear requires --only-binary")
+	if cmd.Bool("clear") && !cmd.Bool("exe-only") {
+		return fmt.Errorf("--clear requires --exe-only")
 	}
 
 	sp, err := alias.Resolve(args[0])
@@ -124,7 +125,7 @@ func newInstaller(cmd *cli.Command) (*install.Installer, error) {
 		Platform:   registry.CurrentPlatform(),
 		NoVerify:   cmd.Bool("no-verify"),
 		Full:       cmd.Bool("full"),
-		OnlyBinary: cmd.Bool("only-binary"),
+		OnlyBinary: cmd.Bool("exe-only"),
 		Clear:      cmd.Bool("clear"),
 		Force:      cmd.Bool("force"),
 		Stdout:     cmd.Writer,

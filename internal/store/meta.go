@@ -19,8 +19,8 @@ type Meta struct {
 	// Binary is the slash-separated path of the linked binary inside the
 	// version directory. Empty for installs made before this was recorded.
 	Binary string `json:"binary,omitempty"`
-	// Full records that the whole release archive was kept, so later installs
-	// and updates preserve the package layout without --full.
+	// Full records that the whole release archive was kept rather than only
+	// the executable.
 	Full bool `json:"full,omitempty"`
 }
 

@@ -393,13 +393,14 @@ func TestRunUsesRequestedVersion(t *testing.T) {
 	}
 }
 
-func TestRunFullKeepsPackageAndIsSticky(t *testing.T) {
+func TestRunDefaultsToFullBundle(t *testing.T) {
 	archive := makePackageArchive(t, "#!/bin/sh\necho hello\n", `{"theme":"dark"}`)
 	f := &fakeGitHub{archive: archive, digest: "sha256:" + sha256Of(archive)}
 
 	dataDir, binDir := t.TempDir(), t.TempDir()
 	in := newInstaller(t, f, dataDir, binDir)
-	in.Full = true
+	var logs bytes.Buffer
+	in.Stdout = &logs
 
 	sp := spec.Spec{Backend: spec.BackendGitHub, Owner: "o", Repo: "tool"}
 	res, err := in.Run(context.Background(), sp)
@@ -424,8 +425,11 @@ func TestRunFullKeepsPackageAndIsSticky(t *testing.T) {
 		t.Errorf("meta = %+v, want Full with Binary tool", meta)
 	}
 
-	// A later run without --full keeps the package layout: --full is sticky.
-	in.Full = false
+	if !strings.Contains(logs.String(), "install mode for github:o/tool: full bundle") {
+		t.Errorf("missing full-bundle mode in logs: %s", logs.String())
+	}
+
+	// A later default run keeps the package layout.
 	res2, err := in.Run(context.Background(), sp)
 	if err != nil {
 		t.Fatalf("second Run: %v", err)
@@ -434,7 +438,7 @@ func TestRunFullKeepsPackageAndIsSticky(t *testing.T) {
 		t.Error("second Run UpToDate = false, want true")
 	}
 	if got := f.downloads.Load(); got != 1 {
-		t.Errorf("downloads = %d, want 1 (sticky --full must not reinstall)", got)
+		t.Errorf("downloads = %d, want 1 (default full-bundle mode must not reinstall)", got)
 	}
 	if _, err := os.Stat(theme); err != nil {
 		t.Errorf("theme removed by the second run: %v", err)
@@ -449,8 +453,19 @@ func TestRunFullUpgradesSingleInstall(t *testing.T) {
 	sp := spec.Spec{Backend: spec.BackendGitHub, Owner: "o", Repo: "tool"}
 
 	in1 := newInstaller(t, f, dataDir, binDir)
+	in1.OnlyBinary = true
+	var logs bytes.Buffer
+	in1.Stdout = &logs
 	if _, err := in1.Run(context.Background(), sp); err != nil {
 		t.Fatalf("single Run: %v", err)
+	}
+
+	if !strings.Contains(logs.String(), "install mode for github:o/tool: binary only") {
+		t.Errorf("missing binary-only mode in logs: %s", logs.String())
+	}
+	meta, _, _ := in1.Store.ReadMeta("github/o/tool", "latest")
+	if meta.Full {
+		t.Error("binary-only install recorded as full")
 	}
 
 	versionDir := filepath.Join(dataDir, "installs", "github", "o", "tool", "latest")
@@ -460,7 +475,6 @@ func TestRunFullUpgradesSingleInstall(t *testing.T) {
 	}
 
 	in2 := newInstaller(t, f, dataDir, binDir)
-	in2.Full = true
 	res, err := in2.Run(context.Background(), sp)
 	if err != nil {
 		t.Fatalf("full Run: %v", err)
@@ -510,7 +524,7 @@ func TestRunOnlyBinaryKeepsThenClearsPackage(t *testing.T) {
 		t.Errorf("meta = %+v, want binary mode with Binary tool", meta)
 	}
 
-	// A plain run keeps binary mode and leaves the package files alone.
+	// A plain run restores the default full-bundle mode.
 	in.OnlyBinary = false
 	if _, err := in.Run(context.Background(), sp); err != nil {
 		t.Fatalf("plain Run: %v", err)
@@ -531,8 +545,8 @@ func TestRunOnlyBinaryKeepsThenClearsPackage(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(versionDir, "tool")); err != nil {
 		t.Errorf("binary missing after --clear: %v", err)
 	}
-	if got := f.downloads.Load(); got != 1 {
-		t.Errorf("downloads = %d, want 1 (--clear must not reinstall)", got)
+	if got := f.downloads.Load(); got != 2 {
+		t.Errorf("downloads = %d, want 2 (plain run restores full bundle; --clear must not reinstall)", got)
 	}
 }
 
