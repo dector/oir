@@ -3,6 +3,7 @@ module github.com/dector/oir
 go 1.27.1
 
 require (
+	github.com/dector/kdly v0.0.0-20260216085240-bad894b0852c
 	github.com/fatih/color v1.19.0
 	github.com/urfave/cli/v3 v3.12.0
 )

@@ -99,12 +99,19 @@ func (f *File) Get(key string) (string, bool, error) {
 	return value, ok, nil
 }
 
-// Set registers key, replacing any existing alias.
-func (f *File) Set(key, value string) error {
+// Validate checks an alias name and target using the same rules as File.Set.
+// Parse deliberately does not validate, preserving user-file read behavior.
+func Validate(key, value string) error {
 	if !keyRE.MatchString(key) {
 		return fmt.Errorf("invalid alias name %q", key)
 	}
-	if _, err := spec.Parse(value); err != nil {
+	_, err := spec.Parse(value)
+	return err
+}
+
+// Set registers key, replacing any existing alias.
+func (f *File) Set(key, value string) error {
+	if err := Validate(key, value); err != nil {
 		return err
 	}
 

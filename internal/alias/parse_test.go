@@ -32,6 +32,26 @@ func TestParse(t *testing.T) {
 	}
 }
 
+func TestParseDoesNotValidateUserEntries(t *testing.T) {
+	data := []byte("bad name = not-a-spec\n")
+	got, err := Parse(data)
+	want := []Entry{{Key: "bad name", Spec: "not-a-spec"}}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("Parse() = %v, %v; want %v", got, err, want)
+	}
+	path := filepath.Join(t.TempDir(), "aliases")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err = Open(path).List()
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("List() = %v, %v; want %v", got, err, want)
+	}
+	if err := Validate(want[0].Key, want[0].Spec); err == nil {
+		t.Fatal("Validate accepted invalid entry")
+	}
+}
+
 func TestParseEmpty(t *testing.T) {
 	got, err := Parse([]byte("# Empty snapshot\n\n"))
 	if err != nil || len(got) != 0 {
