@@ -28,16 +28,17 @@ Each registry publishes an `index.kdl` manifest:
 
 ```kdl
 version "1"
-aliases file="aliases" type="oir-aliases"
+aliases file="aliases.oini" type="oir-aliases"
 ```
 
 - `version` identifies the manifest schema version, not a tool version.
 - V1 requires exactly one `aliases` entry. Missing or duplicate entries are errors.
 - `file` must name a flat sibling file beside `index.kdl`.
 - No directory paths, traversal, or external URLs are supported for `file` in v1.
-- `oir-aliases` identifies the existing alias-file syntax:
+- `oir-aliases` identifies oini, the existing alias-file syntax. Use `aliases.oini` as the registry filename.
+- Oini supports `name = value`, blank lines, and full-line `#` comments. It does not support INI sections or `;` comments.
 
-```ini
+```text
 bar = gh:foo/bar
 rg = gh:BurntSushi/ripgrep
 ```

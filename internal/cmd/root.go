@@ -32,6 +32,7 @@ func New() *cli.Command {
 			newInstallCommand(),
 			newUpdateCommand(),
 			newAliasCommand(),
+			newSearchCommand(),
 			newVersionCommand(),
 		},
 	}
