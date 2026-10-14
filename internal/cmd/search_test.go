@@ -7,7 +7,8 @@ import (
 	"testing"
 )
 
-func TestSearchEmbeddedRegistry(t *testing.T) {
+func TestSearchRegistry(t *testing.T) {
+	useTestCatalog(t)
 	t.Setenv("OIR_CONFIG_DIR", t.TempDir())
 
 	for _, command := range []string{"search", "s"} {
@@ -22,6 +23,7 @@ func TestSearchEmbeddedRegistry(t *testing.T) {
 }
 
 func TestSearchMatchesNamesOnly(t *testing.T) {
+	useTestCatalog(t)
 	t.Setenv("OIR_CONFIG_DIR", t.TempDir())
 
 	if got := run(t, "search", "dector"); got != "" {
@@ -33,6 +35,7 @@ func TestSearchMatchesNamesOnly(t *testing.T) {
 }
 
 func TestSearchUserAliasesOverrideRegistry(t *testing.T) {
+	useTestCatalog(t)
 	dir := t.TempDir()
 	t.Setenv("OIR_CONFIG_DIR", dir)
 	if err := os.WriteFile(filepath.Join(dir, "aliases"), []byte("ror = gh:example/custom\nother = gh:example/other\n"), 0o600); err != nil {
@@ -55,6 +58,7 @@ func TestSearchRequiresOneQuery(t *testing.T) {
 }
 
 func TestSearchReportsInvalidUserAliases(t *testing.T) {
+	useTestCatalog(t)
 	dir := t.TempDir()
 	t.Setenv("OIR_CONFIG_DIR", dir)
 	if err := os.WriteFile(filepath.Join(dir, "aliases"), []byte("invalid line\n"), 0o600); err != nil {

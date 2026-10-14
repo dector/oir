@@ -2,13 +2,12 @@ package cmd
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"sort"
 	"strings"
 	"text/tabwriter"
 
-	"github.com/dector/oir/internal/alias"
+	"github.com/dector/oir/internal/catalog"
 	"github.com/urfave/cli/v3"
 )
 
@@ -22,21 +21,16 @@ func newSearchCommand() *cli.Command {
 	}
 }
 
-//go:embed fixtures/aliases.oini
-var registryFixture []byte
-
-// readRegistryAliases parses a temporary embedded official registry snapshot.
-// TODO: Replace the fixture with the shared catalog/cache reader.
-func readRegistryAliases() ([]alias.Entry, error) {
-	return alias.Parse(registryFixture)
-}
-
-func runSearch(_ context.Context, cmd *cli.Command) error {
+func runSearch(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Args().Len() != 1 || strings.TrimSpace(cmd.Args().First()) == "" {
 		return fmt.Errorf("usage: oir search <query>")
 	}
 
-	registryEntries, err := readRegistryAliases()
+	c, err := commandCatalog(cmd)
+	if err != nil {
+		return err
+	}
+	registryEntries, err := c.Entries(ctx)
 	if err != nil {
 		return err
 	}
@@ -49,16 +43,9 @@ func runSearch(_ context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	type result struct {
-		spec   string
-		source string
-	}
-	entries := make(map[string]result)
-	for _, e := range registryEntries {
-		entries[e.Key] = result{spec: e.Spec, source: "official"}
-	}
-	for _, e := range userEntries {
-		entries[e.Key] = result{spec: e.Spec, source: "user"}
+	entries := make(map[string]catalog.Entry)
+	for _, e := range catalog.Merge(userEntries, registryEntries) {
+		entries[e.Key] = e
 	}
 
 	query := strings.ToLower(cmd.Args().First())
@@ -73,7 +60,7 @@ func runSearch(_ context.Context, cmd *cli.Command) error {
 	w := tabwriter.NewWriter(cmd.Writer, 0, 0, 2, ' ', 0)
 	for _, name := range names {
 		e := entries[name]
-		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\n", name, e.spec, e.source); err != nil {
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\n", name, e.Spec, e.Source); err != nil {
 			return err
 		}
 	}
