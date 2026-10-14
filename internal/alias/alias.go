@@ -60,6 +60,20 @@ func (f *File) List() ([]Entry, error) {
 		return nil, err
 	}
 
+	return sortedEntries(m), nil
+}
+
+// Parse reads oini alias data without accessing the filesystem.
+// Like File.List, it returns entries sorted by key; the last duplicate wins.
+func Parse(data []byte) ([]Entry, error) {
+	m, err := parse(data, "aliases")
+	if err != nil {
+		return nil, err
+	}
+	return sortedEntries(m), nil
+}
+
+func sortedEntries(m map[string]string) []Entry {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -70,8 +84,7 @@ func (f *File) List() ([]Entry, error) {
 	for _, k := range keys {
 		entries = append(entries, Entry{Key: k, Spec: m[k]})
 	}
-
-	return entries, nil
+	return entries
 }
 
 // Get returns the spec registered for key.
@@ -166,6 +179,11 @@ func (f *File) load() (map[string]string, error) {
 		return nil, err
 	}
 
+	return parse(data, f.Path)
+}
+
+func parse(data []byte, source string) (map[string]string, error) {
+	m := map[string]string{}
 	for i, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -176,7 +194,7 @@ func (f *File) load() (map[string]string, error) {
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
 		if !ok || key == "" || value == "" {
-			return nil, fmt.Errorf("%s:%d: want \"key = spec\"", f.Path, i+1)
+			return nil, fmt.Errorf("%s:%d: want \"key = spec\"", source, i+1)
 		}
 
 		m[key] = value

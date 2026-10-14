@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"sort"
 	"strings"
@@ -21,13 +22,13 @@ func newSearchCommand() *cli.Command {
 	}
 }
 
-// readRegistryAliases is a placeholder for reading the official registry cache.
-// TODO: Replace the mock snapshot with the shared catalog/cache reader.
+//go:embed fixtures/aliases.oini
+var registryFixture []byte
+
+// readRegistryAliases parses a temporary embedded official registry snapshot.
+// TODO: Replace the fixture with the shared catalog/cache reader.
 func readRegistryAliases() ([]alias.Entry, error) {
-	return []alias.Entry{
-		{Key: "oir", Spec: "gh:dector/oir"},
-		{Key: "ror", Spec: "gh:dector/ror"},
-	}, nil
+	return alias.Parse(registryFixture)
 }
 
 func runSearch(_ context.Context, cmd *cli.Command) error {

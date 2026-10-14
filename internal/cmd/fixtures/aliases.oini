@@ -1,0 +1,3 @@
+# Temporary official registry snapshot for search development.
+oir = gh:dector/oir
+ror = gh:dector/ror

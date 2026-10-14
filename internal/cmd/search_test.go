@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestSearchMockRegistry(t *testing.T) {
+func TestSearchEmbeddedRegistry(t *testing.T) {
 	t.Setenv("OIR_CONFIG_DIR", t.TempDir())
 
 	for _, command := range []string{"search", "s"} {
