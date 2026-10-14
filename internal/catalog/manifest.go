@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/dector/kdly"
 	"github.com/dector/oir/internal/alias"
+	"github.com/dector/oir/internal/spec"
 )
 
 // Manifest describes the sibling alias file published beside index.kdl.
@@ -113,6 +115,29 @@ func ParseAliases(data []byte) ([]alias.Entry, error) {
 		if err := alias.Validate(entry.Key, entry.Spec); err != nil {
 			return nil, fmt.Errorf("registry alias %q: %w", entry.Key, err)
 		}
+		target, _ := spec.Parse(entry.Spec) // already validated above
+		if target.Version != "" && !validTag(target.Version) {
+			return nil, fmt.Errorf("registry alias %q: invalid Git tag version %q", entry.Key, target.Version)
+		}
 	}
 	return entries, nil
+}
+
+// Git tag names follow ref-format rules, but may be a single component.
+// Keep this restriction registry-specific; user spec parsing is unchanged.
+func validTag(tag string) bool {
+	if tag == "@" || strings.Contains(tag, "..") || strings.Contains(tag, "@{") || strings.HasSuffix(tag, ".") {
+		return false
+	}
+	for _, r := range tag {
+		if unicode.IsSpace(r) || unicode.IsControl(r) || strings.ContainsRune("~^:?*[\\\\", r) {
+			return false
+		}
+	}
+	for _, part := range strings.Split(tag, "/") {
+		if part == "" || strings.HasPrefix(part, ".") || strings.HasSuffix(part, ".lock") {
+			return false
+		}
+	}
+	return true
 }

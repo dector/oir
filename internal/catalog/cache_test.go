@@ -68,13 +68,15 @@ func TestCacheLifecycle(t *testing.T) {
 			t.Fatal("invalid manifest changed snapshot")
 		}
 	}
-	data = "bad = nonsense\n"
-	if err := c.Refresh(ctx); err == nil {
-		t.Fatal("accepted bad alias")
-	}
-	after, _ = os.ReadFile(path)
-	if string(after) != string(original) {
-		t.Fatal("invalid aliases changed snapshot")
+	for _, invalid := range []string{"bad = nonsense\n", "tool = gh:o/tool@v1 bad\n", "tool = gh:o/tool@v1\x00bad\n"} {
+		data = invalid
+		if err := c.Refresh(ctx); err == nil {
+			t.Fatal("accepted bad alias")
+		}
+		after, _ = os.ReadFile(path)
+		if string(after) != string(original) {
+			t.Fatal("invalid aliases changed snapshot")
+		}
 	}
 	if err := os.WriteFile(path, []byte("corrupt"), 0600); err != nil {
 		t.Fatal(err)
