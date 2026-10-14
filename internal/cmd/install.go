@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dector/oir/internal/alias"
+	"github.com/dector/oir/internal/catalog"
 	"github.com/dector/oir/internal/gh"
 	"github.com/dector/oir/internal/install"
 	"github.com/dector/oir/internal/registry"
@@ -23,6 +23,7 @@ func newInstallCommand() *cli.Command {
 		Usage:     "Install a full release bundle (use --exe-only for just the binary)",
 		ArgsUsage: "gh:<owner>/<repo> | <alias>",
 		Flags: []cli.Flag{
+			&cli.BoolFlag{Name: "refresh", Aliases: []string{"r"}, Usage: "Refresh all registries before installing (abort on any failure)"},
 			&cli.BoolFlag{
 				Name:    "force",
 				Aliases: []string{"f"},
@@ -70,19 +71,21 @@ func runInstall(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("--clear requires --exe-only")
 	}
 
-	sp, err := alias.Resolve(args[0])
+	resolved, err := resolveInstallArgument(ctx, cmd, args[0])
 	if err != nil {
 		return err
 	}
 
-	in, err := newInstaller(cmd)
-	if err != nil {
-		return err
+	sp := resolved.Spec
+	fmt.Fprintf(cmd.Writer, "resolving %s", style.Name(sp.String()))
+	if resolved.Source == "user" {
+		fmt.Fprint(cmd.Writer, " (user alias)")
+	} else if resolved.Source != "" {
+		fmt.Fprintf(cmd.Writer, " (registry: %s)", resolved.Source)
 	}
+	fmt.Fprintln(cmd.Writer)
 
-	fmt.Fprintf(cmd.Writer, "resolving %s\n", style.Name(sp.String()))
-
-	res, err := in.Run(ctx, sp)
+	res, err := installResolved(ctx, cmd, sp)
 	if err != nil {
 		return err
 	}
@@ -102,6 +105,49 @@ func runInstall(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return nil
+}
+
+func resolveInstallArgument(ctx context.Context, cmd *cli.Command, raw string) (catalog.Resolution, error) {
+	// Explicit refresh runs even for direct specs and user aliases.
+	var c *catalog.Catalog
+	var err error
+	if cmd.Bool("refresh") {
+		c, err = commandCatalog(cmd)
+		if err != nil {
+			return catalog.Resolution{}, err
+		}
+		if err := refreshCatalog(ctx, cmd, c); err != nil {
+			return catalog.Resolution{}, err
+		}
+	}
+	if catalog.Explicit(raw) {
+		sp, err := spec.Parse(raw)
+		return catalog.Resolution{Spec: sp}, err
+	}
+	f, err := openAliases()
+	if err != nil {
+		return catalog.Resolution{}, err
+	}
+	users, err := f.List()
+	if err != nil {
+		return catalog.Resolution{}, err
+	}
+	if c == nil {
+		c, err = commandCatalog(cmd)
+		if err != nil {
+			return catalog.Resolution{}, err
+		}
+	}
+	return c.Resolve(ctx, raw, users)
+}
+
+// This boundary accepts only a concrete spec; provenance stays in the CLI.
+var installResolved = func(ctx context.Context, cmd *cli.Command, sp spec.Spec) (*install.Result, error) {
+	in, err := newInstaller(cmd)
+	if err != nil {
+		return nil, err
+	}
+	return in.Run(ctx, sp)
 }
 
 func newBackends() registry.Backends {

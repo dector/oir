@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/dector/oir/internal/catalog"
 )
 
 func runErr(t *testing.T, args ...string) error {
@@ -40,6 +42,7 @@ func TestAliasSetGetRemove(t *testing.T) {
 }
 
 func TestInstallUnknownAlias(t *testing.T) {
+	useCatalogSources(t, []catalog.Source{})
 	t.Setenv("OIR_CONFIG_DIR", t.TempDir())
 
 	err := runErr(t, "i", "ror")
