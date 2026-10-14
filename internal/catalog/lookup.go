@@ -17,7 +17,10 @@ type Resolution struct {
 }
 
 // Explicit reports arguments that bypass alias lookup.
-func Explicit(raw string) bool { return strings.ContainsAny(strings.TrimSpace(raw), "/:") }
+func Explicit(raw string) bool {
+	target, _, _ := strings.Cut(strings.TrimSpace(raw), "@")
+	return strings.ContainsAny(target, "/:")
+}
 
 // Resolve checks user aliases before loading registries. Fresh misses never
 // cause another download; Entries alone owns the cache policy.

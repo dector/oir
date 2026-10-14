@@ -32,6 +32,7 @@ func TestInstallResolutionAndProvenance(t *testing.T) {
 	}{
 		{[]string{"i", "ror@v2"}, "github:dector/ror@v2", "registry: official"},
 		{[]string{"i", "custom@v3"}, "github:user/custom@v3", "user alias"},
+		{[]string{"i", "custom@release/v1"}, "github:user/custom@release/v1", "user alias"},
 		{[]string{"i", "-r", "custom"}, "github:user/custom@old", "user alias"},
 	} {
 		called := false

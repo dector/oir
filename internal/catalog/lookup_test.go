@@ -32,6 +32,7 @@ func TestResolve(t *testing.T) {
 		{"tool@v2", []alias.Entry{{Key: "tool", Spec: "gh:user/tool@old"}}, "github:user/tool@v2", "user", 0},
 		{"tool@v3", nil, "github:registry/tool@v3", "first", 4},
 		{"tool", nil, "github:registry/tool@old", "first", 4},
+		{"tool@release/v1", nil, "github:registry/tool@release/v1", "first", 4},
 	} {
 		got, err := c.Resolve(ctx, tc.raw, tc.users)
 		if err != nil || got.Spec.String() != tc.target || got.Source != tc.source || hits != tc.wantHits {
