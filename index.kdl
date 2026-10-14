@@ -1,0 +1,2 @@
+version "1"
+aliases file="aliases.oini" type="oir-aliases"
