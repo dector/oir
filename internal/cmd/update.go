@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/dector/oir/internal/spec"
@@ -36,6 +37,8 @@ func runUpdate(ctx context.Context, cmd *cli.Command) error {
 	if cmd.Args().Len() > 0 {
 		return fmt.Errorf("update takes no arguments, got %d", cmd.Args().Len())
 	}
+
+	warnRootBinDir(cmd, os.Geteuid())
 
 	st, err := store.Default()
 	if err != nil {

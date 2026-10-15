@@ -71,6 +71,8 @@ func runInstall(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("--clear requires --exe-only")
 	}
 
+	warnRootBinDir(cmd, os.Geteuid())
+
 	resolved, err := resolveInstallArgument(ctx, cmd, args[0])
 	if err != nil {
 		return err
@@ -179,7 +181,21 @@ func newInstaller(cmd *cli.Command) (*install.Installer, error) {
 	}), nil
 }
 
+func warnRootBinDir(cmd *cli.Command, uid int) {
+	if uid == 0 && !cmd.IsSet("bin") {
+		fmt.Fprintf(cmd.ErrWriter, "%s running as root; binary links will be installed in /usr/local/bin (override with --bin)\n", style.Warn("warning:"))
+	}
+}
+
 func defaultBinDir() string {
+	return defaultBinDirForUID(os.Geteuid())
+}
+
+func defaultBinDirForUID(uid int) string {
+	if uid == 0 {
+		return "/usr/local/bin"
+	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
