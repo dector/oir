@@ -2,6 +2,7 @@ package registry
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -14,6 +15,30 @@ var osAliases = map[string][]string{
 	"freebsd": {"freebsd"},
 	"netbsd":  {"netbsd"},
 	"openbsd": {"openbsd"},
+}
+
+// knownOS maps every operating-system token oir understands to the GOOS value
+// it belongs to. It lets scoreAsset reject assets that advertise a different
+// OS even when they also mention the requested one, for example Bun's Android
+// builds named "bun-linux-x64-android.zip".
+var knownOS = map[string]string{
+	"linux":   "linux",
+	"darwin":  "darwin",
+	"macos":   "darwin",
+	"osx":     "darwin",
+	"apple":   "darwin",
+	"windows": "windows",
+	"win32":   "windows",
+	"win64":   "windows",
+	"win":     "windows",
+	"freebsd": "freebsd",
+	"netbsd":  "netbsd",
+	"openbsd": "openbsd",
+	"android": "android",
+	"ios":     "ios",
+	"solaris": "solaris",
+	"illumos": "illumos",
+	"wasm":    "wasm",
 }
 
 // archAliases maps a GOARCH value to tokens commonly found in asset names.
@@ -33,6 +58,8 @@ var archiveExtensions = []string{".tar.gz", ".tgz", ".zip"}
 var excludedTokens = []string{
 	"checksum", "checksums", "sha256", "sha512", "sha1", "md5", "sums",
 	"sig", "asc", "pem", "sbom", "spdx", "provenance", "attestation",
+	// Instrumented builds are not the binary users want to run.
+	"profile",
 }
 
 // excludedSuffixes mark assets that are not extractable archives.
@@ -44,23 +71,24 @@ var excludedSuffixes = []string{
 }
 
 // variantTokens are tolerated but deprioritised, so a plain build wins.
-var variantTokens = []string{"musl", "static", "gnu", "gnueabihf", "glibc", "debug", "nocgo"}
+var variantTokens = []string{"musl", "static", "gnu", "gnueabihf", "glibc", "debug", "nocgo", "baseline"}
 
 // Pick chooses the best release asset for the given repo and platform.
 func Pick(assets []Asset, repo string, p Platform) (Asset, error) {
 	best, bestAsset := -1, Asset{}
+	found := false
 
 	for _, a := range assets {
 		score, ok := scoreAsset(a.Name, repo, p)
 		if !ok {
 			continue
 		}
-		if score > best || (score == best && a.CreatedAt.After(bestAsset.CreatedAt)) {
-			best, bestAsset = score, a
+		if !found || better(a, score, bestAsset, best) {
+			best, bestAsset, found = score, a, true
 		}
 	}
 
-	if best < 0 {
+	if !found {
 		return Asset{}, fmt.Errorf("no asset matches %s/%s among %d assets: %s",
 			p.OS, p.Arch, len(assets), assetNames(assets))
 	}
@@ -68,8 +96,25 @@ func Pick(assets []Asset, repo string, p Platform) (Asset, error) {
 	return bestAsset, nil
 }
 
+// better reports whether candidate a should replace the current best b.
+// Higher score wins. Ties break deterministically: the shorter asset name
+// wins, so a plain build beats suffixed variants, then lexical order. Upload
+// time is deliberately ignored: it is not a platform signal and previously
+// made oir prefer cross-target builds such as bun-linux-x64-android.zip.
+func better(a Asset, aScore int, b Asset, bScore int) bool {
+	if aScore != bScore {
+		return aScore > bScore
+	}
+	if len(a.Name) != len(b.Name) {
+		return len(a.Name) < len(b.Name)
+	}
+
+	return a.Name < b.Name
+}
+
 func scoreAsset(name, repo string, p Platform) (int, bool) {
 	norm := normalize(name)
+	repoNorm := normalize(repo)
 	lower := strings.ToLower(name)
 	archived := hasAnySuffix(lower, archiveExtensions)
 
@@ -82,6 +127,11 @@ func scoreAsset(name, repo string, p Platform) (int, bool) {
 		if containsToken(norm, tok) {
 			return 0, false
 		}
+	}
+	// Reject cross-target builds that mention another OS next to ours, for
+	// example "bun-linux-x64-android.zip".
+	if foreignOS(norm, repoNorm, p.OS) {
+		return 0, false
 	}
 	if !matchesAlias(norm, osAliases[p.OS]) {
 		return 0, false
@@ -96,7 +146,7 @@ func scoreAsset(name, repo string, p Platform) (int, bool) {
 	if archived {
 		score += 10
 	}
-	if containsToken(norm, normalize(repo)) {
+	if containsToken(norm, repoNorm) {
 		score += 100
 	}
 	score += 20 // os matched
@@ -139,6 +189,24 @@ func matchesAlias(norm string, aliases []string) bool {
 		if containsToken(norm, a) {
 			return true
 		}
+	}
+
+	return false
+}
+
+// foreignOS reports whether the asset advertises an OS other than want. Tokens
+// that are part of the repository name are ignored, so a repo called "apple"
+// or "windows" does not disqualify its own linux asset.
+func foreignOS(norm, repoNorm, want string) bool {
+	repoTokens := strings.Fields(repoNorm)
+
+	for _, tok := range strings.Fields(norm) {
+		os, known := knownOS[tok]
+		if !known || os == want || slices.Contains(repoTokens, tok) {
+			continue
+		}
+
+		return true
 	}
 
 	return false
